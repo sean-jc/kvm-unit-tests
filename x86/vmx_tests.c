@@ -3726,7 +3726,7 @@ static void try_tpr_threshold_and_vtpr(unsigned threshold, unsigned vtpr)
 	set_vtpr(vtpr);
 	report_prefix_pushf("TPR threshold 0x%x, VTPR.class 0x%x",
 	    threshold, (vtpr >> 4) & 0xf);
-	test_vmx_controls(valid, false);
+	test_vmx_controls(valid, !valid);
 	report_prefix_pop();
 }
 
