@@ -5910,7 +5910,7 @@ static void vmx_eoi_bitmap_ioapic_scan_test_guest(void)
 	asm volatile ("int $0x79");
 }
 
-static void vmx_eoi_bitmap_ioapic_scan_test(void)
+static void vmx_smp_eoi_bitmap_ioapic_scan_test(void)
 {
 	if (!cpu_has_apicv() || (cpu_count() < 2)) {
 		report_skip(__func__);
@@ -6064,7 +6064,7 @@ static void vmx_apic_passthrough_test(void)
 	vmx_apic_passthrough(false);
 }
 
-static void vmx_apic_passthrough_thread_test(void)
+static void vmx_smp_apic_passthrough_test(void)
 {
 	vmx_apic_passthrough(true);
 }
@@ -6423,11 +6423,11 @@ struct vmx_test vmx_tests[] = {
 	TEST(vmx_controls_test),
 	TEST(vmentry_movss_shadow_test),
 	/* APICv tests */
-	TEST(vmx_eoi_bitmap_ioapic_scan_test),
+	TEST(vmx_smp_eoi_bitmap_ioapic_scan_test),
 	TEST(vmx_hlt_with_rvi_test),
 	/* APIC pass-through tests */
 	TEST(vmx_apic_passthrough_test),
-	TEST(vmx_apic_passthrough_thread_test),
+	TEST(vmx_smp_apic_passthrough_test),
 	/* VMCS Shadowing tests */
 	TEST(vmx_vmcs_shadow_test),
 	/* Regression tests */
