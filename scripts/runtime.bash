@@ -65,9 +65,9 @@ function run()
 
     if [ -z "$testname" ]; then
         return
-    fi
-
-    if [ -n "$only_group" ] && ! grep -qw "$only_group" <<<$groups; then
+    elif [ -n "$only_test" ] && [ "$only_test" != "$testname" ]; then
+        return
+    elif [ -n "$only_group" ] && ! grep -qw "$only_group" <<<$groups; then
         return
     fi
 

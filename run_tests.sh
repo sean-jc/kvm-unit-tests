@@ -21,6 +21,7 @@ Usage: $0 [-h] [-v] [-a] [-g group] [-j NUM-TASKS]
     -a: Run all tests, including those flagged as 'nodefault'
         and those guarded by errata.
     -g: Only execute tests in the given group
+    -t: Only execute the given test
     -j: Execute tests in parallel
 
 Set the environment variable QEMU=/path/to/qemu-system-ARCH to
@@ -32,7 +33,7 @@ EOF
 RUNTIME_arch_run="./$TEST_DIR/run"
 source scripts/runtime.bash
 
-while getopts "ag:hj:v" opt; do
+while getopts "ag:t:hj:v" opt; do
     case $opt in
         a)
             run_all_tests="yes"
@@ -40,6 +41,9 @@ while getopts "ag:hj:v" opt; do
             ;;
         g)
             only_group=$OPTARG
+            ;;
+        t)
+            only_test=$OPTARG
             ;;
         h)
             usage
