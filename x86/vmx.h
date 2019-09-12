@@ -685,6 +685,26 @@ static int vmx_off(void)
 	return ret;
 }
 
+static inline bool vmptrld_raw(void *ptr)
+{
+	bool ret;
+	u64 rflags = read_rflags() | X86_EFLAGS_CF | X86_EFLAGS_ZF;
+
+	asm volatile ("push %1; popf; vmptrld (%%rax); setbe %0"
+		      : "=q" (ret) : "q" (rflags), "a" (ptr) : "cc");
+	return ret;
+}
+
+static inline int vmptrst_raw(void *ptr)
+{
+	bool ret;
+	u64 rflags = read_rflags() | X86_EFLAGS_CF | X86_EFLAGS_ZF;
+
+	asm volatile ("push %1; popf; vmptrst (%%rax); setbe %0"
+		      : "=q" (ret) : "q" (rflags), "a" (ptr) : "cc");
+	return ret;
+}
+
 static inline int make_vmcs_current(struct vmcs *vmcs)
 {
 	bool ret;

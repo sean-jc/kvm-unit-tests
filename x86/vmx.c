@@ -1374,6 +1374,8 @@ out:
 	return ret;
 }
 
+#define INTEL_TXT_PRIVATE_SPACE	0xfed20000
+
 static void test_vmptrld(void)
 {
 	struct vmcs *vmcs, *tmp_root;
@@ -1392,6 +1394,10 @@ static void test_vmptrld(void)
 				   ((u64)1 << (width+1)));
 	report("test vmptrld with vmcs address bits set beyond physical address width",
 	       make_vmcs_current(tmp_root) == 1);
+
+	/* Non-existent address, i.e. emulated MMIO */
+	report("test vmptrld with non-existent address (for operand)",
+	       vmptrld_raw((void *)INTEL_TXT_PRIVATE_SPACE) == 1);
 
 	/* Pass VMXON region */
 	assert(!vmcs_clear(vmcs));
@@ -1414,6 +1420,15 @@ static void test_vmptrst(void)
 	init_vmcs(&vmcs1);
 	ret = vmcs_save(&vmcs2);
 	report("test vmptrst", (!ret) && (vmcs1 == vmcs2));
+
+	/*
+	 * Non-existent address, i.e. emulated MMIO.  Counter-intuitively, this
+	 * is expected to succeed as KVM handles unexpected MMIO accesses using
+	 * master abort semantics, i.e. drops the write but doesn't signal a
+	 * fault of any kind.
+	 */
+	report("test vmptrst with non-existent address (for operand)",
+	       vmptrst_raw((void *)INTEL_TXT_PRIVATE_SPACE) == 0);
 }
 
 struct vmx_ctl_msr {
