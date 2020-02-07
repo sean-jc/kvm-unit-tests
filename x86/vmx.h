@@ -581,6 +581,7 @@ enum vm_instruction_error_number {
 
 #define EPT_CAP_WT		1ull
 #define EPT_CAP_PWL4		(1ull << 6)
+#define EPT_CAP_PWL5		(1ull << 7)
 #define EPT_CAP_UC		(1ull << 8)
 #define EPT_CAP_WB		(1ull << 14)
 #define EPT_CAP_2M_PAGE		(1ull << 16)
