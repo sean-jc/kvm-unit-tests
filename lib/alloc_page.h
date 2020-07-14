@@ -13,7 +13,7 @@ void page_alloc_ops_enable(void);
 void *alloc_page(void);
 void *alloc_pages(unsigned int order);
 void free_page(void *page);
-void free_pages(void *mem, size_t size);
+void free_pages(void *mem, unsigned long size);
 void free_pages_by_order(void *mem, unsigned int order);
 
 #endif

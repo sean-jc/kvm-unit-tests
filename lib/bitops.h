@@ -79,7 +79,7 @@ static inline bool is_power_of_2(unsigned long n)
 	return n && !(n & (n - 1));
 }
 
-static inline unsigned int get_order(size_t size)
+static inline unsigned int get_order(unsigned long size)
 {
 	return size ? fls(size) + !is_power_of_2(size) : 0;
 }

@@ -21,7 +21,7 @@ bool page_alloc_initialized(void)
 	return freelist != 0;
 }
 
-void free_pages(void *mem, size_t size)
+void free_pages(void *mem, unsigned long size)
 {
 	void *old_freelist;
 	void *end;
