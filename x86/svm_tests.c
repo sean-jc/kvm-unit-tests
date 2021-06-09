@@ -2353,6 +2353,9 @@ static void test_cr3(void)
 		    vmcb->save.cr3);
 	}
 
+	if (!npt_supported())
+		goto skip_npf_shenanigans;
+
 	vmcb->save.cr4 = cr4_saved & ~X86_CR4_PCIDE;
 
 	/* Clear P (Present) bit in NPT in order to trigger #NPF */
@@ -2373,6 +2376,8 @@ static void test_cr3(void)
 	    SVM_CR3_PAE_LEGACY_RESERVED_MASK, SVM_EXIT_NPF, "(PAE) ");
 
 	pdpe[0] |= 1ULL;
+
+skip_npf_shenanigans:
 	vmcb->save.cr3 = cr3_saved;
 	vmcb->save.cr4 = cr4_saved;
 }
