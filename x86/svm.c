@@ -248,6 +248,9 @@ extern u64 *vmrun_rip;
 static void test_run(struct svm_test *test)
 {
 	u64 vmcb_phys = virt_to_phys(vmcb);
+	u64 cr0 = vmcb->save.cr0;
+	u64 cr4 = vmcb->save.cr4;
+	u64 efer = vmcb->save.efer;
 
 	irq_disable();
 	test->prepare(test);
@@ -286,6 +289,10 @@ static void test_run(struct svm_test *test)
 
         if (test->on_vcpu)
 	    test->on_vcpu_done = true;
+
+	vmcb->save.cr0 = cr0;
+	vmcb->save.cr4 = cr4;
+	vmcb->save.efer = efer;
 }
 
 static void set_additional_vcpu_msr(void *msr_efer)
