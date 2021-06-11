@@ -699,12 +699,15 @@ static bool sel_cr0_bug_check(struct svm_test *test)
     return vmcb->control.exit_code == SVM_EXIT_CR0_SEL_WRITE;
 }
 
-static void npt_nx_prepare(struct svm_test *test)
+static void npt_nx_prepare_common(struct svm_test *test, bool set_efer_nx)
 {
     u64 *pte;
 
     test->scratch = rdmsr(MSR_EFER);
-    wrmsr(MSR_EFER, test->scratch | EFER_NX);
+    if (set_efer_nx)
+        wrmsr(MSR_EFER, test->scratch | EFER_NX);
+    else
+        wrmsr(MSR_EFER, test->scratch & ~EFER_NX);
 
     vmcb_ident(vmcb);
     pte = npt_get_pte((u64)null_test);
@@ -712,7 +715,7 @@ static void npt_nx_prepare(struct svm_test *test)
     *pte |= PT64_NX_MASK;
 }
 
-static bool npt_nx_check(struct svm_test *test)
+static bool npt_nx_check_common(struct svm_test *test, u64 error_code)
 {
     u64 *pte = npt_get_pte((u64)null_test);
 
@@ -722,8 +725,18 @@ static bool npt_nx_check(struct svm_test *test)
 
     vmcb->save.efer |= EFER_NX;
 
-    return (vmcb->control.exit_code == SVM_EXIT_NPF)
-           && (vmcb->control.exit_info_1 == 0x100000015ULL);
+    return (vmcb->control.exit_code == SVM_EXIT_NPF) &&
+           (vmcb->control.exit_info_1 == error_code);
+}
+
+static void npt_nx_prepare(struct svm_test *test)
+{
+    npt_nx_prepare_common(test, true);
+}
+
+static bool npt_nx_check(struct svm_test *test)
+{
+    return npt_nx_check_common(test, 0x100000015ULL);
 }
 
 static void npt_np_prepare(struct svm_test *test)
