@@ -737,6 +737,34 @@ static bool npt_nx_check(struct svm_test *test)
     return npt_nx_check_common(test, 0x100000015ULL);
 }
 
+static void npt_nx_disabled_prepare(struct svm_test *test)
+{
+    /*
+     * Setting NX in the NPT with EFER.NX=0 should get #NPT(RSVD).  Set guest
+     * CR4.SMEP=1, CR0.WP=0, and EFER.NX=0 to trick KVM into activating its
+     * special handling of that scenario (for non-NPT shadow paging).
+     */
+    vmcb->save.efer |= EFER_NX;
+    vmcb->save.cr4  |= X86_CR4_SMEP;
+    vmcb->save.cr0  &= ~X86_CR0_WP;
+
+    npt_nx_prepare_common(test, false);
+}
+
+static bool npt_nx_disabled_check(struct svm_test *test)
+{
+    u64 pfec = 0x20000000dULL;
+
+    /*
+     * PFEC.FETCH is set if CR4.SMEP=1 or EFER.NX=1, and EFER.NX=0.  Host SMEP
+     * is irrelevant for the test itself, but it needs to be reflected in PFEC.
+     */
+    if (read_cr4() & X86_FEATURE_SMEP)
+	pfec |= 0x10;
+
+    return npt_nx_check_common(test, pfec);
+}
+
 static void npt_np_prepare(struct svm_test *test)
 {
     u64 *pte;
@@ -2737,6 +2765,9 @@ struct svm_test svm_tests[] = {
     { "npt_nx", npt_supported, npt_nx_prepare,
       default_prepare_gif_clear, null_test,
       default_finished, npt_nx_check },
+    { "npt_nx_disabled", npt_supported, npt_nx_disabled_prepare,
+      default_prepare_gif_clear, null_test,
+      default_finished, npt_nx_disabled_check },
     { "npt_np", npt_supported, npt_np_prepare,
       default_prepare_gif_clear, npt_np_test,
       default_finished, npt_np_check },
