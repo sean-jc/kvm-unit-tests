@@ -723,6 +723,7 @@ static bool npt_nx_check_common(struct svm_test *test, u64 error_code)
 
     *pte &= ~PT64_NX_MASK;
 
+    printf("error code = 0x%lx, want 0x%lx\n", vmcb->control.exit_info_1, error_code);
     return (vmcb->control.exit_code == SVM_EXIT_NPF) &&
            (vmcb->control.exit_info_1 == error_code);
 }
@@ -753,16 +754,7 @@ static void npt_nx_disabled_prepare(struct svm_test *test)
 
 static bool npt_nx_disabled_check(struct svm_test *test)
 {
-    u64 pfec = 0x20000000dULL;
-
-    /*
-     * PFEC.FETCH is set if CR4.SMEP=1 or EFER.NX=1, and EFER.NX=0.  Host SMEP
-     * is irrelevant for the test itself, but it needs to be reflected in PFEC.
-     */
-    if (read_cr4() & X86_FEATURE_SMEP)
-	pfec |= 0x10;
-
-    return npt_nx_check_common(test, pfec);
+    return npt_nx_check_common(test, 0x10000000dULL);
 }
 
 static void npt_np_prepare(struct svm_test *test)
