@@ -266,7 +266,6 @@ static void ac_env_int(ac_pool_t *pool)
 
 static void ac_test_init(ac_test_t *at, void *virt)
 {
-    set_efer_nx(1);
     set_cr0_wp(1);
     at->flags = 0;
     at->virt = virt;
@@ -1057,6 +1056,9 @@ static int ac_test_run(void)
     shadow_cr0 = read_cr0();
     shadow_cr4 = read_cr4();
     shadow_efer = rdmsr(MSR_EFER);
+
+    if (!this_cpu_has(X86_FEATURE_NX))
+        invalid_mask |= AC_CPU_EFER_NX_MASK;
 
     if (cpuid_maxphyaddr() >= 52) {
         invalid_mask |= AC_PDE_BIT51_MASK;
