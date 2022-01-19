@@ -124,14 +124,13 @@ static unsigned long singlestep_basic(void)
 
 static void report_singlestep_emulated_instructions(unsigned long start)
 {
-	report(n == 7 &&
+	report(n == 6 &&
 	       is_single_step_db(dr6[0]) && db_addr[0] == start &&
 	       is_single_step_db(dr6[1]) && db_addr[1] == start + 1 &&
 	       is_single_step_db(dr6[2]) && db_addr[2] == start + 1 + 3 &&
 	       is_single_step_db(dr6[3]) && db_addr[3] == start + 1 + 3 + 2 &&
-	       is_single_step_db(dr6[4]) && db_addr[4] == start + 1 + 3 + 2 + 5 &&
-	       is_single_step_db(dr6[5]) && db_addr[5] == start + 1 + 3 + 2 + 5 + 2 &&
-	       is_single_step_db(dr6[6]) && db_addr[6] == start + 1 + 3 + 2 + 5 + 2 + 1,
+	       is_single_step_db(dr6[4]) && db_addr[4] == start + 1 + 3 + 2 + 2 &&
+	       is_single_step_db(dr6[5]) && db_addr[5] == start + 1 + 3 + 2 + 2 + 1,
 	       "Single-step #DB on emulated instructions");
 }
 
@@ -153,8 +152,7 @@ static unsigned long singlestep_emulated_instructions(void)
 		"1:push %%rax\n\t"
 		"xor %%rax,%%rax\n\t"
 		"cpuid\n\t"
-		"movl $0x1a0,%%ecx\n\t"
-		"rdmsr\n\t"
+		"out %%eax, $0x80\n\t"
 		"popf\n\t"
 		"lea 1b,%0\n\t"
 		: "=r" (start) : : "rax", "ebx", "ecx", "edx"
