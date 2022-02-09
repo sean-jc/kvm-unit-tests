@@ -21,7 +21,7 @@ static int exceptions;
 #define KVM_FEP "ud2; .byte 'k', 'v', 'm';"
 #define KVM_FEP_LENGTH 5
 static int fep_available = 1;
-static unsigned int far_xfer_vector = -1;
+static int far_xfer_vector = -1;
 static unsigned int far_xfer_error_code = -1;
 
 struct far_xfer_test_case {
@@ -30,8 +30,7 @@ struct far_xfer_test_case {
 	uint16_t dpl;
 	uint16_t p;
 	bool usermode;
-	unsigned int vector;
-	unsigned int error_code;
+	int vector;
 	const char *msg;
 };
 
@@ -41,6 +40,7 @@ enum far_xfer_insn {
 
 struct far_xfer_test {
 	enum far_xfer_insn insn;
+	const char *insn_name;
 	struct far_xfer_test_case *testcases;
 	unsigned int nr_testcases;
 };
@@ -50,37 +50,31 @@ struct far_xfer_test {
 #define DS_TYPE			0x3
 
 static struct far_xfer_test_case far_ret_testcases[] = {
-	{0, DS_TYPE, 0, 0, false, GP_VECTOR, FIRST_SPARE_SEL, "lret desc.type!=code && desc.p=0"},
-	{0, NON_CONFORM_CS_TYPE, 3, 0, false, GP_VECTOR, FIRST_SPARE_SEL, "lret non-conforming && dpl!=rpl && desc.p=0"},
-	{0, CONFORM_CS_TYPE, 3, 0, false, GP_VECTOR, FIRST_SPARE_SEL, "lret conforming && dpl>rpl && desc.p=0"},
-	{0, NON_CONFORM_CS_TYPE, 0, 0, false, NP_VECTOR, FIRST_SPARE_SEL, "lret desc.p=0"},
-	{0, NON_CONFORM_CS_TYPE, 3, 1, true, GP_VECTOR, FIRST_SPARE_SEL, "lret rpl<cpl"},
+	{0, DS_TYPE,		 0, 0, false, GP_VECTOR, "desc.type!=code && desc.p=0"},
+	{0, NON_CONFORM_CS_TYPE, 3, 0, false, GP_VECTOR, "non-conforming && dpl!=rpl && desc.p=0"},
+	{0, CONFORM_CS_TYPE,     3, 0, false, GP_VECTOR, "conforming && dpl>rpl && desc.p=0"},
+	{0, NON_CONFORM_CS_TYPE, 0, 0, false, NP_VECTOR, "desc.p=0"},
+	{0, NON_CONFORM_CS_TYPE, 3, 1, true,  GP_VECTOR, "rpl<cpl"},
 };
 
 static struct far_xfer_test far_ret_test = {
 	.insn = FAR_XFER_RET,
+	.insn_name = "far ret",
 	.testcases = &far_ret_testcases[0],
 	.nr_testcases = sizeof(far_ret_testcases) / sizeof(struct far_xfer_test_case),
 };
 
 #define TEST_FAR_RET_ASM(seg, prefix)		\
+({						\
 	asm volatile("lea 1f(%%rip), %%rax\n\t" \
 		     "pushq %[asm_seg]\n\t"	\
 		     "pushq $2f\n\t"		\
 		      prefix "lretq\n\t"	\
 		     "1: addq $16, %%rsp\n\t"	\
 		     "2:"			\
-		     : : [asm_seg]"r"(seg)	\
-		     : "eax", "memory");
-
-static inline void test_far_ret_asm(uint16_t seg, bool force_emulation)
-{
-	if (force_emulation) {
-		TEST_FAR_RET_ASM(seg, KVM_FEP);
-	} else {
-		TEST_FAR_RET_ASM(seg, "");
-	}
-}
+		     : : [asm_seg]"r"((u64)seg)	\
+		     : "eax", "memory");	\
+})
 
 struct regs {
 	u64 rax, rbx, rcx, rdx;
@@ -959,7 +953,7 @@ static void far_xfer_exception_handler(struct ex_regs *regs)
 {
 	far_xfer_vector = regs->vector;
 	far_xfer_error_code = regs->error_code;
-	regs->rip = regs->rax;;
+	regs->rip = regs->rax;
 }
 
 static void __test_far_xfer(enum far_xfer_insn insn, uint16_t seg,
@@ -967,10 +961,13 @@ static void __test_far_xfer(enum far_xfer_insn insn, uint16_t seg,
 {
 	switch (insn) {
 	case FAR_XFER_RET:
-		test_far_ret_asm(seg, force_emulation);
+		if (force_emulation)
+			TEST_FAR_RET_ASM(seg, KVM_FEP);
+		else
+			TEST_FAR_RET_ASM(seg, "");
 		break;
 	default:
-		report_fail("unknown instructions");
+		report_fail("Unexpected insn enum = %d\n", insn);
 		break;
 	}
 }
@@ -1004,22 +1001,24 @@ static void test_far_xfer(bool force_emulation, struct far_xfer_test *test)
 			__test_far_xfer(test->insn, seg, force_emulation);
 
 		report(far_xfer_vector == t->vector &&
-		       far_xfer_error_code == t->error_code, "%s", t->msg);
+		       (far_xfer_vector < 0 || far_xfer_error_code == FIRST_SPARE_SEL),
+		       "%s on %s, %s: wanted %d (%d), got %d (%d)",
+		       test->insn_name, force_emulation ? "emuator" : "hardware", t->msg,
+		       t->vector, t->vector < 0 ? -1 : FIRST_SPARE_SEL,
+		       far_xfer_vector, far_xfer_error_code);
 	}
 
 	handle_exception(GP_VECTOR, 0);
 	handle_exception(NP_VECTOR, 0);
 }
 
-static void test_lret(uint64_t *mem)
+static void test_far_ret(uint64_t *mem)
 {
-	printf("test lret in hw\n");
 	test_far_xfer(false, &far_ret_test);
 }
 
-static void test_em_lret(uint64_t *mem)
+static void test_em_far_ret(uint64_t *mem)
 {
-	printf("test lret in emulator\n");
 	test_far_xfer(true, &far_ret_test);
 }
 
@@ -1297,7 +1296,7 @@ int main(void)
 	test_smsw(mem);
 	test_lmsw();
 	test_ljmp(mem);
-	test_lret(mem);
+	test_far_ret(mem);
 	test_stringio();
 	test_incdecnotneg(mem);
 	test_btc(mem);
@@ -1322,7 +1321,7 @@ int main(void)
 		test_smsw_reg(mem);
 		test_nop(mem);
 		test_mov_dr(mem);
-		test_em_lret(mem);
+		test_em_far_ret(mem);
 	} else {
 		report_skip("skipping register-only tests, "
 			    "use kvm.force_emulation_prefix=1 to enable");
