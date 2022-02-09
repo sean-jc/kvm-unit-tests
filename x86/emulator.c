@@ -66,16 +66,17 @@ static struct far_xfer_test far_ret_test = {
 };
 
 static struct far_xfer_test_case far_jmp_testcases[] = {
-	{0, DS_TYPE, 0, 0, false, GP_VECTOR, FIRST_SPARE_SEL, "ljmp desc.type!=code && desc.p=0"},
-	{0, NON_CONFORM_CS_TYPE, 3, 0, false, GP_VECTOR, FIRST_SPARE_SEL, "jmp non-conforming && dpl!=cpl && desc.p=0"},
-	{3, NON_CONFORM_CS_TYPE, 0, 0, false, GP_VECTOR, FIRST_SPARE_SEL, "ljmp conforming && rpl>cpl && desc.p=0"},
-	{0, CONFORM_CS_TYPE, 3, 0, false, GP_VECTOR, FIRST_SPARE_SEL, "ljmp conforming && dpl>cpl && desc.p=0"},
-	{0, NON_CONFORM_CS_TYPE, 0, 0, false, NP_VECTOR, FIRST_SPARE_SEL, "ljmp desc.p=0"},
-	{3, CONFORM_CS_TYPE, 0, 1, true, -1, -1, "ljmp dpl<cpl"},
+	{0, DS_TYPE,		 0, 0, false, GP_VECTOR, "desc.type!=code && desc.p=0"},
+	{0, NON_CONFORM_CS_TYPE, 3, 0, false, GP_VECTOR, "non-conforming && dpl!=cpl && desc.p=0"},
+	{3, NON_CONFORM_CS_TYPE, 0, 0, false, GP_VECTOR, "conforming && rpl>cpl && desc.p=0"},
+	{0, CONFORM_CS_TYPE,	 3, 0, false, GP_VECTOR, "conforming && dpl>cpl && desc.p=0"},
+	{0, NON_CONFORM_CS_TYPE, 0, 0, false, NP_VECTOR, "desc.p=0"},
+	{3, CONFORM_CS_TYPE,	 0, 1, true, -1,	 "dpl<cpl"},
 };
 
 static struct far_xfer_test far_jmp_test = {
 	.insn = FAR_XFER_JMP,
+	.insn_name = "far jmp",
 	.testcases = &far_jmp_testcases[0],
 	.nr_testcases = sizeof(far_jmp_testcases) / sizeof(struct far_xfer_test_case),
 };
@@ -95,23 +96,16 @@ static unsigned long *fep_jmp_buf_ptr = &fep_jmp_buf[0];
 		     : "eax", "memory");	\
 })
 
-#define TEST_FAR_JMP_ASM(seg, prefix)		\
-	*(uint16_t *)(&fep_jmp_buf[1]) = seg;	\
-	asm volatile("lea 1f(%%rip), %%rax\n\t" \
-		     "movq $1f, (%[mem])\n\t"	\
-		      prefix "rex64 ljmp *(%[mem])\n\t"\
-		     "1:"			\
-		     : : [mem]"r"(fep_jmp_buf_ptr)\
-		     : "eax", "memory");
-
-static inline void test_far_jmp_asm(uint16_t seg, bool force_emulation)
-{
-	if (force_emulation) {
-		TEST_FAR_JMP_ASM(seg, KVM_FEP);
-	} else {
-		TEST_FAR_JMP_ASM(seg, "");
-	}
-}
+#define TEST_FAR_JMP_ASM(seg, prefix)			\
+({							\
+	*(uint16_t *)(&fep_jmp_buf[1]) = seg;		\
+	asm volatile("lea 1f(%%rip), %%rax\n\t"		\
+		     "movq $1f, (%[mem])\n\t"		\
+		      prefix "rex64 ljmp *(%[mem])\n\t"	\
+		     "1:"				\
+		     : : [mem]"r"(fep_jmp_buf_ptr)	\
+		     : "eax", "memory");		\
+})
 
 struct regs {
 	u64 rax, rbx, rcx, rdx;
@@ -991,7 +985,10 @@ static void __test_far_xfer(enum far_xfer_insn insn, uint16_t seg,
 			TEST_FAR_RET_ASM(seg, "");
 		break;
 	case FAR_XFER_JMP:
-		test_far_jmp_asm(seg, force_emulation);
+		if (force_emulation)
+			TEST_FAR_JMP_ASM(seg, KVM_FEP);
+		else
+			TEST_FAR_JMP_ASM(seg, "");
 		break;
 	default:
 		report_fail("Unexpected insn enum = %d\n", insn);
@@ -1039,7 +1036,7 @@ static void test_far_xfer(bool force_emulation, struct far_xfer_test *test)
 	handle_exception(NP_VECTOR, 0);
 }
 
-static void test_ljmp(uint64_t *mem)
+static void test_far_jmp(uint64_t *mem)
 {
 	unsigned char *m = (unsigned char *)mem;
 	volatile int res = 1;
@@ -1049,12 +1046,12 @@ static void test_ljmp(uint64_t *mem)
 	asm volatile ("rex64 ljmp *%0"::"m"(*m));
 	res = 0;
 jmpf:
-	report(res, "far jmp, self-modifying code");
+	report(res, "far jmp, via emulated MMIO");
 
 	test_far_xfer(false, &far_jmp_test);
 }
 
-static void test_em_ljmp(uint64_t *mem)
+static void test_em_far_jmp(uint64_t *mem)
 {
 	test_far_xfer(true, &far_jmp_test);
 }
@@ -1341,7 +1338,7 @@ int main(void)
 
 	test_smsw(mem);
 	test_lmsw();
-	test_ljmp(mem);
+	test_far_jmp(mem);
 	test_far_ret(mem);
 	test_stringio();
 	test_incdecnotneg(mem);
@@ -1367,7 +1364,7 @@ int main(void)
 		test_smsw_reg(mem);
 		test_nop(mem);
 		test_mov_dr(mem);
-		test_em_ljmp(mem);
+		test_em_far_jmp(mem);
 		test_em_far_ret(mem);
 	} else {
 		report_skip("skipping register-only tests, "
