@@ -17,6 +17,8 @@ COMMON_CFLAGS += -mno-red-zone -mno-sse -mno-sse2 $(fcf_protection_full)
 cflatobjs += lib/x86/setjmp64.o
 cflatobjs += lib/x86/intel-iommu.o
 cflatobjs += lib/x86/usermode.o
+cflatobjs += lib/x86/svm_lib.o
+
 
 tests = $(TEST_DIR)/apic.$(exe) \
 	  $(TEST_DIR)/emulator.$(exe) $(TEST_DIR)/idt_test.$(exe) \

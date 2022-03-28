@@ -2,6 +2,8 @@
 #ifndef SRC_LIB_X86_SVM_H_
 #define SRC_LIB_X86_SVM_H_
 
+#include "libcflat.h"
+
 enum {
     INTERCEPT_INTR,
     INTERCEPT_NMI,

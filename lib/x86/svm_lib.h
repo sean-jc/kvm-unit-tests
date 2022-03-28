@@ -54,5 +54,17 @@ static inline void clgi(void)
     asm volatile ("clgi");
 }
 
+void setup_svm(void);
+
+u64 *npt_get_pte(u64 address);
+u64 *npt_get_pde(u64 address);
+u64 *npt_get_pdpe(void);
+u64 *npt_get_pml4e(void);
+
+u8* svm_get_msr_bitmap(void);
+u8* svm_get_io_bitmap(void);
+
+#define MSR_BITMAP_SIZE 8192
+
 
 #endif /* SRC_LIB_X86_SVM_LIB_H_ */

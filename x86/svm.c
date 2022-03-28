@@ -16,45 +16,7 @@
 #include "vmalloc.h"
 #include "svm_lib.h"
 
-/* for the nested page table*/
-u64 *pte[2048];
-u64 *pde[4];
-u64 *pdpe;
-u64 *pml4e;
-
 struct vmcb *vmcb;
-
-u64 *npt_get_pte(u64 address)
-{
-	int i1, i2;
-
-	address >>= 12;
-	i1 = (address >> 9) & 0x7ff;
-	i2 = address & 0x1ff;
-
-	return &pte[i1][i2];
-}
-
-u64 *npt_get_pde(u64 address)
-{
-	int i1, i2;
-
-	address >>= 21;
-	i1 = (address >> 9) & 0x3;
-	i2 = address & 0x1ff;
-
-	return &pde[i1][i2];
-}
-
-u64 *npt_get_pdpe(void)
-{
-	return pdpe;
-}
-
-u64 *npt_get_pml4e(void)
-{
-	return pml4e;
-}
 
 bool smp_supported(void)
 {
@@ -124,12 +86,6 @@ static void test_thunk(struct svm_test *test)
 	vmmcall();
 }
 
-u8 *io_bitmap;
-u8 io_bitmap_area[16384];
-
-u8 *msr_bitmap;
-u8 msr_bitmap_area[MSR_BITMAP_SIZE + PAGE_SIZE];
-
 void vmcb_ident(struct vmcb *vmcb)
 {
 	u64 vmcb_phys = virt_to_phys(vmcb);
@@ -165,12 +121,12 @@ void vmcb_ident(struct vmcb *vmcb)
 	ctrl->intercept = (1ULL << INTERCEPT_VMRUN) |
 			  (1ULL << INTERCEPT_VMMCALL) |
 			  (1ULL << INTERCEPT_SHUTDOWN);
-	ctrl->iopm_base_pa = virt_to_phys(io_bitmap);
-	ctrl->msrpm_base_pa = virt_to_phys(msr_bitmap);
+	ctrl->iopm_base_pa = virt_to_phys(svm_get_io_bitmap());
+	ctrl->msrpm_base_pa = virt_to_phys(svm_get_msr_bitmap());
 
 	if (npt_supported()) {
 		ctrl->nested_ctl = 1;
-		ctrl->nested_cr3 = (u64)pml4e;
+		ctrl->nested_cr3 = (u64)npt_get_pml4e();
 		ctrl->tlb_ctl = TLB_CONTROL_FLUSH_ALL_ASID;
 	}
 }
@@ -259,72 +215,7 @@ static noinline void test_run(struct svm_test *test)
 	    test->on_vcpu_done = true;
 }
 
-static void set_additional_vcpu_msr(void *msr_efer)
-{
-	void *hsave = alloc_page();
 
-	wrmsr(MSR_VM_HSAVE_PA, virt_to_phys(hsave));
-	wrmsr(MSR_EFER, (ulong)msr_efer | EFER_SVME);
-}
-
-static void setup_svm(void)
-{
-	void *hsave = alloc_page();
-	u64 *page, address;
-	int i,j;
-
-	wrmsr(MSR_VM_HSAVE_PA, virt_to_phys(hsave));
-	wrmsr(MSR_EFER, rdmsr(MSR_EFER) | EFER_SVME);
-
-	io_bitmap = (void *) ALIGN((ulong)io_bitmap_area, PAGE_SIZE);
-
-	msr_bitmap = (void *) ALIGN((ulong)msr_bitmap_area, PAGE_SIZE);
-
-	if (!npt_supported())
-		return;
-
-	for (i = 1; i < cpu_count(); i++)
-		on_cpu(i, (void *)set_additional_vcpu_msr, (void *)rdmsr(MSR_EFER));
-
-	printf("NPT detected - running all tests with NPT enabled\n");
-
-	/*
-	* Nested paging supported - Build a nested page table
-	* Build the page-table bottom-up and map everything with 4k
-	* pages to get enough granularity for the NPT unit-tests.
-	*/
-
-	address = 0;
-
-	/* PTE level */
-	for (i = 0; i < 2048; ++i) {
-		page = alloc_page();
-
-		for (j = 0; j < 512; ++j, address += 4096)
-	    		page[j] = address | 0x067ULL;
-
-		pte[i] = page;
-	}
-
-	/* PDE level */
-	for (i = 0; i < 4; ++i) {
-		page = alloc_page();
-
-	for (j = 0; j < 512; ++j)
-	    page[j] = (u64)pte[(i * 512) + j] | 0x027ULL;
-
-		pde[i] = page;
-	}
-
-	/* PDPe level */
-	pdpe   = alloc_page();
-	for (i = 0; i < 4; ++i)
-		pdpe[i] = ((u64)(pde[i])) | 0x27;
-
-	/* PML4e level */
-	pml4e    = alloc_page();
-	pml4e[0] = ((u64)pdpe) | 0x27;
-}
 
 int matched;
 

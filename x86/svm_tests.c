@@ -309,14 +309,13 @@ static bool check_next_rip(struct svm_test *test)
     return address == vmcb->control.next_rip;
 }
 
-extern u8 *msr_bitmap;
 
 static void prepare_msr_intercept(struct svm_test *test)
 {
     default_prepare(test);
     vmcb->control.intercept |= (1ULL << INTERCEPT_MSR_PROT);
     vmcb->control.intercept_exceptions |= (1ULL << GP_VECTOR);
-    memset(msr_bitmap, 0xff, MSR_BITMAP_SIZE);
+    memset(svm_get_msr_bitmap(), 0xff, MSR_BITMAP_SIZE);
 }
 
 static void test_msr_intercept(struct svm_test *test)
@@ -427,7 +426,7 @@ static bool msr_intercept_finished(struct svm_test *test)
 
 static bool check_msr_intercept(struct svm_test *test)
 {
-    memset(msr_bitmap, 0, MSR_BITMAP_SIZE);
+    memset(svm_get_msr_bitmap(), 0, MSR_BITMAP_SIZE);
     return (test->scratch == -2);
 }
 
@@ -539,10 +538,10 @@ static bool check_mode_switch(struct svm_test *test)
 	return test->scratch == 2;
 }
 
-extern u8 *io_bitmap;
-
 static void prepare_ioio(struct svm_test *test)
 {
+    u8 *io_bitmap = svm_get_io_bitmap();
+
     vmcb->control.intercept |= (1ULL << INTERCEPT_IOIO_PROT);
     test->scratch = 0;
     memset(io_bitmap, 0, 8192);
@@ -551,6 +550,8 @@ static void prepare_ioio(struct svm_test *test)
 
 static void test_ioio(struct svm_test *test)
 {
+    u8 *io_bitmap = svm_get_io_bitmap();
+
     // stage 0, test IO pass
     inb(0x5000);
     outb(0x0, 0x5000);
@@ -623,6 +624,7 @@ fail:
 static bool ioio_finished(struct svm_test *test)
 {
     unsigned port, size;
+    u8 *io_bitmap = svm_get_io_bitmap();
 
     /* Only expect IOIO intercepts */
     if (vmcb->control.exit_code == SVM_EXIT_VMMCALL)
@@ -647,6 +649,8 @@ static bool ioio_finished(struct svm_test *test)
 
 static bool check_ioio(struct svm_test *test)
 {
+    u8 *io_bitmap = svm_get_io_bitmap();
+
     memset(io_bitmap, 0, 8193);
     return test->scratch != -1;
 }
@@ -2514,7 +2518,8 @@ static void test_msrpm_iopm_bitmap_addrs(void)
 {
 	u64 saved_intercept = vmcb->control.intercept;
 	u64 addr_beyond_limit = 1ull << cpuid_maxphyaddr();
-	u64 addr = virt_to_phys(msr_bitmap) & (~((1ull << 12) - 1));
+	u64 addr = virt_to_phys(svm_get_msr_bitmap()) & (~((1ull << 12) - 1));
+	u8 *io_bitmap = svm_get_io_bitmap();
 
 	TEST_BITMAP_ADDR(saved_intercept, INTERCEPT_MSR_PROT,
 			addr_beyond_limit - 2 * PAGE_SIZE, SVM_EXIT_ERR,
