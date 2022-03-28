@@ -52,21 +52,14 @@ u64 *npt_get_pdpe(void);
 u64 *npt_get_pml4e(void);
 bool smp_supported(void);
 bool default_supported(void);
-bool vgif_supported(void);
-bool lbrv_supported(void);
-bool tsc_scale_supported(void);
-bool pause_filter_supported(void);
-bool pause_threshold_supported(void);
 void default_prepare(struct svm_test *test);
 void default_prepare_gif_clear(struct svm_test *test);
 bool default_finished(struct svm_test *test);
-bool npt_supported(void);
 int get_test_stage(struct svm_test *test);
 void set_test_stage(struct svm_test *test, int s);
 void inc_test_stage(struct svm_test *test);
 void vmcb_ident(struct vmcb *vmcb);
 struct regs get_regs(void);
-void vmmcall(void);
 int __svm_vmrun(u64 rip);
 void __svm_bare_vmrun(void);
 int svm_vmrun(void);
@@ -74,17 +67,6 @@ void test_set_guest(test_guest_func func);
 
 extern struct vmcb *vmcb;
 extern struct svm_test svm_tests[];
-
-static inline void stgi(void)
-{
-    asm volatile ("stgi");
-}
-
-static inline void clgi(void)
-{
-    asm volatile ("clgi");
-}
-
 
 
 #define SAVE_GPR_C                              \

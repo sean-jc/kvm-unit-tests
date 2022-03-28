@@ -10,6 +10,7 @@
 #include "isr.h"
 #include "apic.h"
 #include "delay.h"
+#include "svm_lib.h"
 
 #define SVM_EXIT_MAX_DR_INTERCEPT 0x3f
 

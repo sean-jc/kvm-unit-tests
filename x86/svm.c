@@ -14,6 +14,7 @@
 #include "isr.h"
 #include "apic.h"
 #include "vmalloc.h"
+#include "svm_lib.h"
 
 /* for the nested page table*/
 u64 *pte[2048];
@@ -65,31 +66,6 @@ bool default_supported(void)
     return true;
 }
 
-bool vgif_supported(void)
-{
-	return this_cpu_has(X86_FEATURE_VGIF);
-}
-
-bool lbrv_supported(void)
-{
-    return this_cpu_has(X86_FEATURE_LBRV);
-}
-
-bool tsc_scale_supported(void)
-{
-    return this_cpu_has(X86_FEATURE_TSCRATEMSR);
-}
-
-bool pause_filter_supported(void)
-{
-    return this_cpu_has(X86_FEATURE_PAUSEFILTER);
-}
-
-bool pause_threshold_supported(void)
-{
-    return this_cpu_has(X86_FEATURE_PFTHRESHOLD);
-}
-
 
 void default_prepare(struct svm_test *test)
 {
@@ -105,10 +81,6 @@ bool default_finished(struct svm_test *test)
 	return true; /* one vmexit */
 }
 
-bool npt_supported(void)
-{
-	return this_cpu_has(X86_FEATURE_NPT);
-}
 
 int get_test_stage(struct svm_test *test)
 {
@@ -137,11 +109,6 @@ static void vmcb_set_seg(struct vmcb_seg *seg, u16 selector,
 	seg->attrib = attr;
 	seg->limit = limit;
 	seg->base = base;
-}
-
-inline void vmmcall(void)
-{
-	asm volatile ("vmmcall" : : : "memory");
 }
 
 static test_guest_func guest_main;
