@@ -54,7 +54,11 @@ static inline void clgi(void)
     asm volatile ("clgi");
 }
 
+void vmcb_set_seg(struct vmcb_seg *seg, u16 selector,
+                         u64 base, u32 limit, u32 attr);
+
 void setup_svm(void);
+void vmcb_ident(struct vmcb *vmcb);
 
 u64 *npt_get_pte(u64 address);
 u64 *npt_get_pde(u64 address);

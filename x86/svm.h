@@ -53,7 +53,6 @@ bool default_finished(struct svm_test *test);
 int get_test_stage(struct svm_test *test);
 void set_test_stage(struct svm_test *test, int s);
 void inc_test_stage(struct svm_test *test);
-void vmcb_ident(struct vmcb *vmcb);
 struct regs get_regs(void);
 int __svm_vmrun(u64 rip);
 void __svm_bare_vmrun(void);

@@ -71,6 +71,15 @@ static void set_additional_vcpu_msr(void *msr_efer)
     wrmsr(MSR_EFER, (ulong)msr_efer | EFER_SVME);
 }
 
+void vmcb_set_seg(struct vmcb_seg *seg, u16 selector,
+                         u64 base, u32 limit, u32 attr)
+{
+    seg->selector = selector;
+    seg->attrib = attr;
+    seg->limit = limit;
+    seg->base = base;
+}
+
 void setup_svm(void)
 {
     void *hsave = alloc_page();
@@ -128,4 +137,49 @@ void setup_svm(void)
     /* PML4e level */
     pml4e    = alloc_page();
     pml4e[0] = ((u64)pdpe) | 0x27;
+}
+
+void vmcb_ident(struct vmcb *vmcb)
+{
+    u64 vmcb_phys = virt_to_phys(vmcb);
+    struct vmcb_save_area *save = &vmcb->save;
+    struct vmcb_control_area *ctrl = &vmcb->control;
+    u32 data_seg_attr = 3 | SVM_SELECTOR_S_MASK | SVM_SELECTOR_P_MASK
+        | SVM_SELECTOR_DB_MASK | SVM_SELECTOR_G_MASK;
+    u32 code_seg_attr = 9 | SVM_SELECTOR_S_MASK | SVM_SELECTOR_P_MASK
+        | SVM_SELECTOR_L_MASK | SVM_SELECTOR_G_MASK;
+    struct descriptor_table_ptr desc_table_ptr;
+
+    memset(vmcb, 0, sizeof(*vmcb));
+    asm volatile ("vmsave %0" : : "a"(vmcb_phys) : "memory");
+    vmcb_set_seg(&save->es, read_es(), 0, -1U, data_seg_attr);
+    vmcb_set_seg(&save->cs, read_cs(), 0, -1U, code_seg_attr);
+    vmcb_set_seg(&save->ss, read_ss(), 0, -1U, data_seg_attr);
+    vmcb_set_seg(&save->ds, read_ds(), 0, -1U, data_seg_attr);
+    sgdt(&desc_table_ptr);
+    vmcb_set_seg(&save->gdtr, 0, desc_table_ptr.base, desc_table_ptr.limit, 0);
+    sidt(&desc_table_ptr);
+    vmcb_set_seg(&save->idtr, 0, desc_table_ptr.base, desc_table_ptr.limit, 0);
+    ctrl->asid = 1;
+    save->cpl = 0;
+    save->efer = rdmsr(MSR_EFER);
+    save->cr4 = read_cr4();
+    save->cr3 = read_cr3();
+    save->cr0 = read_cr0();
+    save->dr7 = read_dr7();
+    save->dr6 = read_dr6();
+    save->cr2 = read_cr2();
+    save->g_pat = rdmsr(MSR_IA32_CR_PAT);
+    save->dbgctl = rdmsr(MSR_IA32_DEBUGCTLMSR);
+    ctrl->intercept = (1ULL << INTERCEPT_VMRUN) |
+              (1ULL << INTERCEPT_VMMCALL) |
+              (1ULL << INTERCEPT_SHUTDOWN);
+    ctrl->iopm_base_pa = virt_to_phys(svm_get_io_bitmap());
+    ctrl->msrpm_base_pa = virt_to_phys(svm_get_msr_bitmap());
+
+    if (npt_supported()) {
+        ctrl->nested_ctl = 1;
+        ctrl->nested_cr3 = (u64)npt_get_pml4e();
+        ctrl->tlb_ctl = TLB_CONTROL_FLUSH_ALL_ASID;
+    }
 }
