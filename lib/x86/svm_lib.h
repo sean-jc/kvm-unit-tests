@@ -4,6 +4,11 @@
 #include <x86/svm.h>
 #include "processor.h"
 
+static inline bool svm_supported(void)
+{
+    return this_cpu_has(X86_FEATURE_SVM);
+}
+
 static inline bool npt_supported(void)
 {
     return this_cpu_has(X86_FEATURE_NPT);

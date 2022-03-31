@@ -375,7 +375,7 @@ int main(int ac, char **av)
 
 	__setup_vm(&opt_mask);
 
-	if (!this_cpu_has(X86_FEATURE_SVM)) {
+	if (!svm_supported()) {
 		printf("SVM not availble\n");
 		return report_summary();
 	}
