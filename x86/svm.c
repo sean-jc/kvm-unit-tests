@@ -77,9 +77,9 @@ static void test_thunk(struct svm_test *test)
 	vmmcall();
 }
 
-struct regs regs;
+struct x86_gpr_regs regs;
 
-struct regs get_regs(void)
+struct x86_gpr_regs get_regs(void)
 {
 	return regs;
 }
@@ -98,13 +98,7 @@ int __svm_vmrun(u64 rip)
 	vmcb->save.rsp = (ulong)(guest_stack + ARRAY_SIZE(guest_stack));
 	regs.rdi = (ulong)v2_test;
 
-	asm volatile (
-		ASM_PRE_VMRUN_CMD
-                "vmrun %%rax\n\t"               \
-		ASM_POST_VMRUN_CMD
-		:
-		: "a" (virt_to_phys(vmcb))
-		: "memory", "r15");
+	SVM_BARE_VMRUN(vmcb, regs);
 
 	return (vmcb->control.exit_code);
 }
@@ -118,6 +112,7 @@ extern u8 vmrun_rip;
 
 static noinline void test_run(struct svm_test *test)
 {
+
 	u64 vmcb_phys = virt_to_phys(vmcb);
 
 	irq_disable();
@@ -136,18 +131,19 @@ static noinline void test_run(struct svm_test *test)
 			"sti \n\t"
 			"call *%c[PREPARE_GIF_CLEAR](%[test]) \n \t"
 			"mov %[vmcb_phys], %%rax \n\t"
-			ASM_PRE_VMRUN_CMD
+			ASM_PRE_VMRUN_CMD(regs)
 			".global vmrun_rip\n\t"		\
 			"vmrun_rip: vmrun %%rax\n\t"    \
-			ASM_POST_VMRUN_CMD
+			ASM_POST_VMRUN_CMD(regs)
 			"cli \n\t"
 			"stgi"
 			: // inputs clobbered by the guest:
 			"=D" (the_test),            // first argument register
 			"=b" (the_vmcb)             // callee save register!
 			: [test] "0" (the_test),
-			[vmcb_phys] "1"(the_vmcb),
-			[PREPARE_GIF_CLEAR] "i" (offsetof(struct svm_test, prepare_gif_clear))
+			  [vmcb_phys] "1"(the_vmcb),
+			  [PREPARE_GIF_CLEAR] "i" (offsetof(struct svm_test, prepare_gif_clear)),
+			  [regs] "i"(&regs)
 			: "rax", "rcx", "rdx", "rsi",
 			"r8", "r9", "r10", "r11" , "r12", "r13", "r14", "r15",
 			"memory");

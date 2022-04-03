@@ -3147,6 +3147,7 @@ into:
 static void svm_into_test(void)
 {
     handle_exception(OF_VECTOR, guest_test_of_handler);
+
     test_set_guest(svm_of_test_guest);
     report(svm_vmrun() == SVM_EXIT_VMMCALL && of_test_counter == 1,
         "#OF is generated in L2 exception handler0");
@@ -3351,7 +3352,7 @@ static void svm_lbrv_test1(void)
 
 	wrmsr(MSR_IA32_DEBUGCTLMSR, DEBUGCTLMSR_LBR);
 	DO_BRANCH(host_branch1);
-	SVM_BARE_VMRUN;
+	SVM_BARE_VMRUN(vmcb,regs);
 	dbgctl = rdmsr(MSR_IA32_DEBUGCTLMSR);
 
 	if (vmcb->control.exit_code != SVM_EXIT_VMMCALL) {
@@ -3374,7 +3375,7 @@ static void svm_lbrv_test2(void)
 	wrmsr(MSR_IA32_DEBUGCTLMSR, DEBUGCTLMSR_LBR);
 	DO_BRANCH(host_branch2);
 	wrmsr(MSR_IA32_DEBUGCTLMSR, 0);
-	SVM_BARE_VMRUN;
+	SVM_BARE_VMRUN(vmcb,regs);
 	dbgctl = rdmsr(MSR_IA32_DEBUGCTLMSR);
 	wrmsr(MSR_IA32_DEBUGCTLMSR, 0);
 
@@ -3402,7 +3403,7 @@ static void svm_lbrv_nested_test1(void)
 
 	wrmsr(MSR_IA32_DEBUGCTLMSR, DEBUGCTLMSR_LBR);
 	DO_BRANCH(host_branch3);
-	SVM_BARE_VMRUN;
+	SVM_BARE_VMRUN(vmcb,regs);
 	dbgctl = rdmsr(MSR_IA32_DEBUGCTLMSR);
 	wrmsr(MSR_IA32_DEBUGCTLMSR, 0);
 
@@ -3437,7 +3438,7 @@ static void svm_lbrv_nested_test2(void)
 
 	wrmsr(MSR_IA32_DEBUGCTLMSR, DEBUGCTLMSR_LBR);
 	DO_BRANCH(host_branch4);
-	SVM_BARE_VMRUN;
+	SVM_BARE_VMRUN(vmcb,regs);
 	dbgctl = rdmsr(MSR_IA32_DEBUGCTLMSR);
 	wrmsr(MSR_IA32_DEBUGCTLMSR, 0);
 
