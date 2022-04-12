@@ -18,6 +18,9 @@ static volatile int ipi_done;
 static volatile bool ipi_wait;
 static int _cpu_count;
 static atomic_t active_cpus;
+extern u8 sipi_entry;
+extern u8 sipi_end;
+volatile unsigned cpu_online_count = 1;
 
 static __attribute__((used)) void ipi(void)
 {
@@ -114,8 +117,6 @@ void smp_init(void)
 	int i;
 	void ipi_entry(void);
 
-	_cpu_count = fwcfg_get_nb_cpus();
-
 	setup_idt();
 	init_apic_map();
 	set_idt_entry(IPI_VECTOR, ipi_entry, 0);
@@ -141,4 +142,27 @@ void smp_reset_apic(void)
 		on_cpu(i, do_reset_apic, 0);
 
 	atomic_inc(&active_cpus);
+}
+
+void ap_init(void)
+{
+	u8 *dst_addr = 0;
+	size_t sipi_sz = (&sipi_end - &sipi_entry) + 1;
+
+	asm volatile("cld");
+
+	/* Relocate SIPI vector to dst_addr so it can run in 16-bit mode. */
+	memcpy(dst_addr, &sipi_entry, sipi_sz);
+
+	/* INIT */
+	apic_icr_write(APIC_DEST_ALLBUT | APIC_DEST_PHYSICAL | APIC_DM_INIT | APIC_INT_ASSERT, 0);
+
+	/* SIPI */
+	apic_icr_write(APIC_DEST_ALLBUT | APIC_DEST_PHYSICAL | APIC_DM_STARTUP, 0);
+
+	_cpu_count = fwcfg_get_nb_cpus();
+
+	while (_cpu_count != cpu_online_count) {
+		;
+	}
 }

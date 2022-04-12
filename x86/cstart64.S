@@ -157,6 +157,7 @@ gdt32:
 gdt32_end:
 
 .code16
+.globl sipi_entry
 sipi_entry:
 	mov %cr0, %eax
 	or $1, %eax
@@ -168,6 +169,7 @@ gdt32_descr:
 	.word gdt32_end - gdt32 - 1
 	.long gdt32
 
+.globl sipi_end
 sipi_end:
 
 .code32
@@ -240,21 +242,3 @@ lvl5:
 
 online_cpus:
 	.fill (max_cpus + 7) / 8, 1, 0
-
-ap_init:
-	cld
-	lea sipi_entry, %rsi
-	xor %rdi, %rdi
-	mov $(sipi_end - sipi_entry), %rcx
-	rep movsb
-	mov $APIC_DEFAULT_PHYS_BASE, %eax
-	movl $(APIC_DEST_ALLBUT | APIC_DEST_PHYSICAL | APIC_DM_INIT | APIC_INT_ASSERT), APIC_ICR(%rax)
-	movl $(APIC_DEST_ALLBUT | APIC_DEST_PHYSICAL | APIC_DM_STARTUP), APIC_ICR(%rax)
-	call fwcfg_get_nb_cpus
-1:	pause
-	cmpw %ax, cpu_online_count
-	jne 1b
-	ret
-
-.align 2
-cpu_online_count:	.word 1
