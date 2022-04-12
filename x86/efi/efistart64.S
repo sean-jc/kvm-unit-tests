@@ -6,6 +6,14 @@
 
 .data
 
+max_cpus = MAX_TEST_CPUS
+
+/* Reserve stack in .data */
+	. = . + 4096 * max_cpus
+	.align 16
+.globl stacktop
+stacktop:
+
 .align PAGE_SIZE
 .globl ptl2
 ptl2:
