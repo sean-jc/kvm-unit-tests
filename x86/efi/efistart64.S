@@ -26,15 +26,8 @@ ptl4:
 .code64
 .text
 
-.globl load_gdt_tss
-load_gdt_tss:
-	/* Load GDT */
-	lgdt gdt_descr(%rip)
-
-	/* Load TSS */
-	mov %rdi, %rax
-	ltr %ax
-
+.globl setup_segments64
+setup_segments64:
 	/* Update data segments */
 	mov $0x10, %ax /* 3rd entry in gdt64: 32/64-bit data segment */
 	mov %ax, %ds
