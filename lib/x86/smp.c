@@ -148,6 +148,8 @@ void smp_reset_apic(void)
 #ifdef CONFIG_EFI
 extern u8 gdt32_descr, gdt32, gdt32_end;
 extern u8 ap_start32;
+extern u32 smp_stacktop;
+extern u8 stacktop;
 #endif
 
 void ap_init(void)
@@ -168,6 +170,7 @@ void ap_init(void)
 	idt_entry_t *gate_descr;
 	u16 *gdt32_descr_reladdr = (u16 *) (PAGE_SIZE - sizeof(u16));
 
+	smp_stacktop = ((u64) (&stacktop)) - 4096;
 	/*
 	 * gdt32_descr for CONFIG_EFI needs to be filled here dynamically
 	 * since compile time calculation of offsets is not allowed when

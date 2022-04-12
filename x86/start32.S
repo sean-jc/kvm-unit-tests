@@ -27,7 +27,16 @@ MSR_GS_BASE = 0xc0000101
 .endm
 
 prepare_64:
-	lgdt gdt_descr
+#ifdef CONFIG_EFI
+	call prepare_64_1
+prepare_64_1:
+	pop %edx
+	add $gdt_descr - prepare_64_1, %edx
+#else
+	mov $gdt_descr, %edx
+#endif
+	lgdtl (%edx)
+
 	setup_segments
 
 	xor %eax, %eax
@@ -38,7 +47,14 @@ enter_long_mode:
 	bts $5, %eax  // pae
 	mov %eax, %cr4
 
+#ifdef CONFIG_EFI
+	call prepare_64_2
+prepare_64_2:
+	pop %eax
+	add $ptl4 - prepare_64_2, %eax
+#else
 	mov pt_root, %eax
+#endif
 	mov %eax, %cr3
 
 efer = 0xc0000080
@@ -53,10 +69,34 @@ efer = 0xc0000080
 	mov %eax, %cr0
 	ret
 
+.globl ap_start32
 ap_start32:
 	setup_segments
+
+#ifdef CONFIG_EFI
+	call ap_start32_1
+ap_start32_1:
+	pop %edx
+	add $smp_stacktop - ap_start32_1, %edx
+#else
+	mov $smp_stacktop, %edx
+#endif
 	mov $-4096, %esp
-	lock xaddl %esp, smp_stacktop
+	lock xaddl %esp, (%edx)
+
 	setup_percpu_area
 	call prepare_64
-	ljmpl $8, $ap_start64
+
+#ifdef CONFIG_EFI
+	call ap_start32_2
+ap_start32_2:
+	pop %edx
+	add $ap_start64 - ap_start32_2, %edx
+#else
+	mov $ap_start64, %edx
+#endif
+
+	pushl $0x08
+	pushl %edx
+
+	lretl
