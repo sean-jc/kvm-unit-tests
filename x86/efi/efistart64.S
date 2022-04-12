@@ -98,8 +98,3 @@ sipi_end:
 .code32
 
 #include "../start32.S"
-
-.code64:
-
-ap_start64:
-	jmp ap_start64

@@ -22,6 +22,7 @@ static atomic_t active_cpus;
 extern u8 sipi_entry;
 extern u8 sipi_end;
 volatile unsigned cpu_online_count = 1;
+unsigned char online_cpus[(MAX_TEST_CPUS + 7) / 8];
 
 static __attribute__((used)) void ipi(void)
 {
