@@ -6,6 +6,7 @@
 #include "apic.h"
 #include "fwcfg.h"
 #include "desc.h"
+#include "asm/page.h"
 
 #define IPI_VECTOR 0x20
 
@@ -144,15 +145,70 @@ void smp_reset_apic(void)
 	atomic_inc(&active_cpus);
 }
 
+#ifdef CONFIG_EFI
+extern u8 gdt32_descr, gdt32, gdt32_end;
+extern u8 ap_start32;
+#endif
+
 void ap_init(void)
 {
 	u8 *dst_addr = 0;
 	size_t sipi_sz = (&sipi_end - &sipi_entry) + 1;
 
+	assert(sipi_sz < PAGE_SIZE);
+
 	asm volatile("cld");
 
 	/* Relocate SIPI vector to dst_addr so it can run in 16-bit mode. */
+	memset(dst_addr, 0, PAGE_SIZE);
 	memcpy(dst_addr, &sipi_entry, sipi_sz);
+
+#ifdef CONFIG_EFI
+	volatile struct descriptor_table_ptr *gdt32_descr_rel;
+	idt_entry_t *gate_descr;
+	u16 *gdt32_descr_reladdr = (u16 *) (PAGE_SIZE - sizeof(u16));
+
+	/*
+	 * gdt32_descr for CONFIG_EFI needs to be filled here dynamically
+	 * since compile time calculation of offsets is not allowed when
+	 * building with -shared, and rip-relative addressing is not supported
+	 * in 16-bit mode.
+	 *
+	 * Use the last two bytes of SIPI page to store relocated gdt32_descr
+	 * addr.
+	 */
+	*gdt32_descr_reladdr = (&gdt32_descr - &sipi_entry);
+
+	gdt32_descr_rel = (struct descriptor_table_ptr *) ((u64) *gdt32_descr_reladdr);
+	gdt32_descr_rel->limit = (u16) (&gdt32_end - &gdt32 - 1);
+	gdt32_descr_rel->base = (ulong) ((u32) (&gdt32 - &sipi_entry));
+
+	/*
+	 * EFI may not load the 32-bit AP entrypoint (ap_start32) low enough
+	 * to be reachable from the SIPI vector. Since we build with -shared, this
+	 * location needs to be fetched at runtime, and rip-relative addressing is
+	 * not supported in 16-bit mode.
+	 * To perform 16-bit -> 32-bit far jump, our options are:
+	 * - ljmpl $cs, $label : unusable since $label is not known at build time.
+	 * - push $cs; push $label; lret : requires an intermediate trampoline since
+	 *	 $label must still be within 0 - 0xFFFF for 16-bit far return to work.
+	 * - lcall into a call-gate : best suited.
+	 *
+	 * Set up call gate to ap_start32 within GDT.
+	 *
+	 * gdt32 layout:
+	 *
+	 * Entry | Segment
+	 * 0	 | NULL descr
+	 * 1	 | Code segment descr
+	 * 2	 | Data segment descr
+	 * 3	 | Call gate descr
+	 */
+	gate_descr = (idt_entry_t *) ((u8 *)(&gdt32 - &sipi_entry)
+		+ 3 * sizeof(gdt_entry_t));
+	set_idt_entry_t(gate_descr, sizeof(gdt_entry_t), (void *) &ap_start32,
+		0x8 /* sel */, 0xc /* type */, 0 /* dpl */);
+#endif
 
 	/* INIT */
 	apic_icr_write(APIC_DEST_ALLBUT | APIC_DEST_PHYSICAL | APIC_DM_INIT | APIC_INT_ASSERT, 0);

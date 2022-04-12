@@ -65,7 +65,34 @@ setup_segments64:
 
 .globl sipi_entry
 sipi_entry:
-	jmp sipi_entry
+	mov %cr0, %eax
+	or $1, %eax
+	mov %eax, %cr0
+
+	/* Retrieve relocated gdt32_descr address at (PAGE_SIZE - 2). */
+	mov (PAGE_SIZE - 2), %ebx
+	lgdtl (%ebx)
+
+	lcall $0x18, $0x0
+
+.globl gdt32
+gdt32:
+	.quad 0
+	.quad 0x00cf9b000000ffff // flat 32-bit code segment
+	.quad 0x00cf93000000ffff // flat 32-bit data segment
+	.quad 0                  // call gate to 32-bit AP entrypoint
+.globl gdt32_end
+gdt32_end:
+
+.globl gdt32_descr
+gdt32_descr:
+	.word 0
+	.long 0
 
 .globl sipi_end
 sipi_end:
+
+.code32
+.globl ap_start32
+ap_start32:
+	jmp ap_start32
