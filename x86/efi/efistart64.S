@@ -44,6 +44,13 @@ setup_segments64:
 	mov %ax, %gs
 	mov %ax, %ss
 
+	/* Setup percpu base */
+	MSR_GS_BASE = 0xc0000101
+	mov %rdi, %rax
+	mov $0, %edx
+	mov $MSR_GS_BASE, %ecx
+	wrmsr
+
 	/*
 	 * Update the code segment by putting it on the stack before the return
 	 * address, then doing a far return: this will use the new code segment
