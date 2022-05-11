@@ -108,10 +108,11 @@ static void test_msr(struct msr_info *msr, bool is_64bit_host)
 int main(int ac, char **av)
 {
 	bool is_64bit_host = this_cpu_has(X86_FEATURE_LM);
+	unsigned int nr_mce_banks;
+	char msr_name[32];
 	int i;
 
 	if (ac == 3) {
-		char msr_name[16];
 		int index = strtoul(av[1], NULL, 0x10);
 		snprintf(msr_name, sizeof(msr_name), "MSR:0x%x", index);
 
@@ -122,8 +123,69 @@ int main(int ac, char **av)
 		};
 		test_msr(&msr, is_64bit_host);
 	} else {
-		for (i = 0 ; i < ARRAY_SIZE(msr_info); i++) {
+		for (i = 0 ; i < ARRAY_SIZE(msr_info); i++)
 			test_msr(&msr_info[i], is_64bit_host);
+
+		nr_mce_banks = rdmsr(MSR_IA32_MCG_CAP) & 0xff;
+		for (i = 0; i < nr_mce_banks; i++) {
+			snprintf(msr_name, sizeof(msr_name), "MSR_IA32_MC%u_CTL", i);
+			test_msr_rw(MSR_IA32_MCx_CTL(i), msr_name, 0);
+			test_msr_rw(MSR_IA32_MCx_CTL(i), msr_name, -1ull);
+			test_wrmsr_fault(MSR_IA32_MCx_CTL(i), msr_name, NONCANONICAL);
+
+			snprintf(msr_name, sizeof(msr_name), "MSR_IA32_MC%u_STATUS", i);
+			test_msr_rw(MSR_IA32_MCx_STATUS(i), msr_name, 0);
+			/*
+			 * STATUS MSRs can only be written with '0' (to clear
+			 * the MSR), except on AMD-based systems with bit 18
+			 * set in MSR_K7_HWCR.  That bit is not architectural
+			 * and should not be set by default by KVM or by the
+			 * VMM (though this might fail if run on bare metal).
+			 */
+			test_wrmsr_fault(MSR_IA32_MCx_STATUS(i), msr_name, 1);
+
+			snprintf(msr_name, sizeof(msr_name), "MSR_IA32_MC%u_ADDR", i);
+			test_msr_rw(MSR_IA32_MCx_ADDR(i), msr_name, 0);
+			test_msr_rw(MSR_IA32_MCx_ADDR(i), msr_name, -1ull);
+			/*
+			 * The ADDR is a physical address, and all bits are
+			 * writable on 64-bit hosts.    Don't test the negative
+			 * case, as KVM doesn't enforce checks on bits 63:36
+			 * for 32-bit hosts.  The behavior depends on the
+			 * underlying hardware, e.g. a 32-bit guest on a 64-bit
+			 * host may observe 64-bit values in the ADDR MSRs.
+			 */
+			if (is_64bit_host)
+				test_msr_rw(MSR_IA32_MCx_ADDR(i), msr_name, NONCANONICAL);
+
+			snprintf(msr_name, sizeof(msr_name), "MSR_IA32_MC%u_MISC", i);
+			test_msr_rw(MSR_IA32_MCx_MISC(i), msr_name, 0);
+			test_msr_rw(MSR_IA32_MCx_MISC(i), msr_name, -1ull);
+			test_msr_rw(MSR_IA32_MCx_MISC(i), msr_name, NONCANONICAL);
+		}
+
+		/*
+		 * The theoretical maximum number of MCE banks is 32 (on Intel
+		 * CPUs, without jumping to a new base address), as the last
+		 * unclaimed MSR is 0x479; 0x480 begins the VMX MSRs.  Verify
+		 * accesses to theoretically legal, unsupported MSRs fault.
+		 */
+		for (i = nr_mce_banks; i < 32; i++) {
+			snprintf(msr_name, sizeof(msr_name), "MSR_IA32_MC%u_CTL", i);
+			test_rdmsr_fault(MSR_IA32_MCx_CTL(i), msr_name);
+			test_wrmsr_fault(MSR_IA32_MCx_CTL(i), msr_name, 0);
+
+			snprintf(msr_name, sizeof(msr_name), "MSR_IA32_MC%u_STATUS", i);
+			test_rdmsr_fault(MSR_IA32_MCx_STATUS(i), msr_name);
+			test_wrmsr_fault(MSR_IA32_MCx_STATUS(i), msr_name, 0);
+
+			snprintf(msr_name, sizeof(msr_name), "MSR_IA32_MC%u_ADDR", i);
+			test_rdmsr_fault(MSR_IA32_MCx_ADDR(i), msr_name);
+			test_wrmsr_fault(MSR_IA32_MCx_ADDR(i), msr_name, 0);
+
+			snprintf(msr_name, sizeof(msr_name), "MSR_IA32_MC%u_MISC", i);
+			test_rdmsr_fault(MSR_IA32_MCx_MISC(i), msr_name);
+			test_wrmsr_fault(MSR_IA32_MCx_MISC(i), msr_name, 0);
 		}
 	}
 
