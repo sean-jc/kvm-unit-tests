@@ -213,7 +213,6 @@ extern tss64_t tss[];
 extern gdt_entry_t gdt[];
 
 unsigned exception_vector(void);
-int write_cr4_safe(unsigned long val);
 unsigned exception_error_code(void);
 bool exception_rflags_rf(void);
 void set_idt_entry(int vec, void *addr, int dpl);
