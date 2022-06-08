@@ -81,7 +81,8 @@ static void test_wrmsr_fault(struct msr_info *msr, unsigned long long val)
 
 static void test_rdmsr_fault(struct msr_info *msr)
 {
-	unsigned char vector = rdmsr_safe(msr->index);
+	uint64_t ignored;
+	unsigned char vector = rdmsr_safe(msr->index, &ignored);
 
 	report(vector == GP_VECTOR,
 	       "Expected #GP on RDSMR(%s), got vector %d", msr->name, vector);
