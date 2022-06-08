@@ -72,7 +72,7 @@ static void test_msr_rw(struct msr_info *msr, unsigned long long val)
 
 static void test_wrmsr_fault(struct msr_info *msr, unsigned long long val)
 {
-	unsigned char vector = wrmsr_checking(msr->index, val);
+	unsigned char vector = wrmsr_safe(msr->index, val);
 
 	report(vector == GP_VECTOR,
 	       "Expected #GP on WRSMR(%s, 0x%llx), got vector %d",
@@ -81,7 +81,7 @@ static void test_wrmsr_fault(struct msr_info *msr, unsigned long long val)
 
 static void test_rdmsr_fault(struct msr_info *msr)
 {
-	unsigned char vector = rdmsr_checking(msr->index);
+	unsigned char vector = rdmsr_safe(msr->index);
 
 	report(vector == GP_VECTOR,
 	       "Expected #GP on RDSMR(%s), got vector %d", msr->name, vector);
