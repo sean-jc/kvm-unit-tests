@@ -25,24 +25,27 @@ struct msr_info {
 #define addr_64 0x0000123456789abcULL
 #define addr_ul (unsigned long)addr_64
 
-#define MSR_TEST(msr, val, only64)	\
+#define __MSR_TEST(msr, val, only64) \
 	{ .index = msr, .name = #msr, .value = val, .is_64bit_only = only64 }
+
+#define MSR_TEST(msr, val)		__MSR_TEST(msr, val, false)
+#define MSR_TEST_ONLY64(msr, val)	__MSR_TEST(msr, val, true)
 
 struct msr_info msr_info[] =
 {
-	MSR_TEST(MSR_IA32_SYSENTER_CS, 0x1234, false),
-	MSR_TEST(MSR_IA32_SYSENTER_ESP, addr_ul, false),
-	MSR_TEST(MSR_IA32_SYSENTER_EIP, addr_ul, false),
+	MSR_TEST(MSR_IA32_SYSENTER_CS, 0x1234),
+	MSR_TEST(MSR_IA32_SYSENTER_ESP, addr_ul),
+	MSR_TEST(MSR_IA32_SYSENTER_EIP, addr_ul),
 	// reserved: 1:2, 4:6, 8:10, 13:15, 17, 19:21, 24:33, 35:63
-	MSR_TEST(MSR_IA32_MISC_ENABLE, 0x400c51889, false),
-	MSR_TEST(MSR_IA32_CR_PAT, 0x07070707, false),
-	MSR_TEST(MSR_FS_BASE, addr_64, true),
-	MSR_TEST(MSR_GS_BASE, addr_64, true),
-	MSR_TEST(MSR_KERNEL_GS_BASE, addr_64, true),
-	MSR_TEST(MSR_EFER, EFER_SCE, false),
-	MSR_TEST(MSR_LSTAR, addr_64, true),
-	MSR_TEST(MSR_CSTAR, addr_64, true),
-	MSR_TEST(MSR_SYSCALL_MASK, 0xffffffff, true),
+	MSR_TEST(MSR_IA32_MISC_ENABLE, 0x400c51889),
+	MSR_TEST(MSR_IA32_CR_PAT, 0x07070707),
+	MSR_TEST_ONLY64(MSR_FS_BASE, addr_64),
+	MSR_TEST_ONLY64(MSR_GS_BASE, addr_64),
+	MSR_TEST_ONLY64(MSR_KERNEL_GS_BASE, addr_64),
+	MSR_TEST(MSR_EFER, EFER_SCE),
+	MSR_TEST_ONLY64(MSR_LSTAR, addr_64),
+	MSR_TEST_ONLY64(MSR_CSTAR, addr_64),
+	MSR_TEST_ONLY64(MSR_SYSCALL_MASK, 0xffffffff),
 //	MSR_IA32_DEBUGCTLMSR needs svm feature LBRV
 //	MSR_VM_HSAVE_PA only AMD host
 };
