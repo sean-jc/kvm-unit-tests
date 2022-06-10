@@ -3,6 +3,7 @@
 #include "libcflat.h"
 #include "processor.h"
 #include "msr.h"
+#include <bitops.h>
 #include <stdlib.h>
 
 /**
@@ -19,30 +20,32 @@ struct msr_info {
 	bool is_64bit_only;
 	const char *name;
 	unsigned long long value;
+	unsigned long long ro_bits;
 };
 
 
 #define addr_64 0x0000123456789abcULL
 #define addr_ul (unsigned long)addr_64
 
-#define __MSR_TEST(msr, val, only64) \
-	{ .index = msr, .name = #msr, .value = val, .is_64bit_only = only64 }
+#define __MSR_TEST(msr, val, only64, robits) \
+	{ .index = msr, .name = #msr, .value = val, .is_64bit_only = only64, .ro_bits = robits }
 
-#define MSR_TEST(msr, val)		__MSR_TEST(msr, val, false)
-#define MSR_TEST_ONLY64(msr, val)	__MSR_TEST(msr, val, true)
+#define MSR_TEST(msr, val)			__MSR_TEST(msr, val, false, 0)
+#define MSR_TEST_RO_BITS(msr, val, robits)	__MSR_TEST(msr, val, false, robits)
+#define MSR_TEST_ONLY64(msr, val)		__MSR_TEST(msr, val, true, 0)
 
 struct msr_info msr_info[] =
 {
 	MSR_TEST(MSR_IA32_SYSENTER_CS, 0x1234),
 	MSR_TEST(MSR_IA32_SYSENTER_ESP, addr_ul),
 	MSR_TEST(MSR_IA32_SYSENTER_EIP, addr_ul),
-	// reserved: 1:2, 4:6, 8:10, 13:15, 17, 19:21, 24:33, 35:63
-	MSR_TEST(MSR_IA32_MISC_ENABLE, 0x400c51889),
+	// reserved: 1:2, 4:6, 8:10, 13:15, 17, 19:21, 24:33, 35:63, ro: 11:12
+	MSR_TEST_RO_BITS(MSR_IA32_MISC_ENABLE, 0x400c50089, BIT(11) | BIT(12)),
 	MSR_TEST(MSR_IA32_CR_PAT, 0x07070707),
 	MSR_TEST_ONLY64(MSR_FS_BASE, addr_64),
 	MSR_TEST_ONLY64(MSR_GS_BASE, addr_64),
 	MSR_TEST_ONLY64(MSR_KERNEL_GS_BASE, addr_64),
-	MSR_TEST(MSR_EFER, EFER_SCE),
+	MSR_TEST_RO_BITS(MSR_EFER, EFER_SCE, ~EFER_SCE),
 	MSR_TEST_ONLY64(MSR_LSTAR, addr_64),
 	MSR_TEST_ONLY64(MSR_CSTAR, addr_64),
 	MSR_TEST_ONLY64(MSR_SYSCALL_MASK, 0xffffffff),
@@ -55,13 +58,7 @@ static void test_msr_rw(struct msr_info *msr, unsigned long long val)
 	unsigned long long r, orig;
 
 	orig = rdmsr(msr->index);
-	/*
-	 * Special case EFER since clearing LME/LMA is not allowed in 64-bit mode,
-	 * and conversely setting those bits on 32-bit CPUs is not allowed.  Treat
-	 * the desired value as extra bits to set.
-	 */
-	if (msr->index == MSR_EFER)
-		val |= orig;
+	val |= orig & msr->ro_bits;
 	wrmsr(msr->index, val);
 	r = rdmsr(msr->index);
 	wrmsr(msr->index, orig);
