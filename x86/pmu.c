@@ -50,7 +50,7 @@ struct pmu_event {
 	uint32_t unit_sel;
 	int min;
 	int max;
-} gp_events[] = {
+} intel_gp_events[] = {
 	{"core cycles", 0x003c, 1*N, 50*N},
 	{"instructions", 0x00c0, 10*N, 10.2*N},
 	{"ref cycles", 0x013c, 1*N, 30*N},
@@ -65,7 +65,13 @@ struct pmu_event {
 };
 
 #define PMU_CAP_FW_WRITES	(1ULL << 13)
-static u64 gp_counter_base = MSR_IA32_PERFCTR0;
+static u32 gp_counter_base;
+static u32 gp_select_base;
+static unsigned int gp_events_size;
+static unsigned int nr_gp_counters;
+
+typedef struct pmu_event PMU_EVENTS_ARRAY_t[];
+static PMU_EVENTS_ARRAY_t *gp_events = NULL;
 
 char *buf;
 
@@ -114,9 +120,9 @@ static struct pmu_event* get_counter_event(pmu_counter_t *cnt)
 	if (is_gp(cnt)) {
 		int i;
 
-		for (i = 0; i < sizeof(gp_events)/sizeof(gp_events[0]); i++)
-			if (gp_events[i].unit_sel == (cnt->config & 0xffff))
-				return &gp_events[i];
+		for (i = 0; i < gp_events_size; i++)
+			if ((*gp_events)[i].unit_sel == (cnt->config & 0xffff))
+				return &(*gp_events)[i];
 	} else
 		return &fixed_events[cnt->ctr - MSR_CORE_PERF_FIXED_CTR0];
 
@@ -142,12 +148,22 @@ static void global_disable(pmu_counter_t *cnt)
 			~(1ull << cnt->idx));
 }
 
+static inline uint32_t get_gp_counter_msr(unsigned int i)
+{
+	return gp_counter_base + i;
+}
+
+static inline uint32_t get_gp_select_msr(unsigned int i)
+{
+	return gp_select_base + i;
+}
+
 static void __start_event(pmu_counter_t *evt, uint64_t count)
 {
     evt->count = count;
     wrmsr(evt->ctr, evt->count);
     if (is_gp(evt))
-	    wrmsr(MSR_P6_EVNTSEL0 + event_to_global_idx(evt),
+	    wrmsr(get_gp_select_msr(event_to_global_idx(evt)),
 			    evt->config | EVNTSEL_EN);
     else {
 	    uint32_t ctrl = rdmsr(MSR_CORE_PERF_FIXED_CTR_CTRL);
@@ -176,7 +192,7 @@ static void stop_event(pmu_counter_t *evt)
 {
 	global_disable(evt);
 	if (is_gp(evt))
-		wrmsr(MSR_P6_EVNTSEL0 + event_to_global_idx(evt),
+		wrmsr(get_gp_select_msr(event_to_global_idx(evt)),
 				evt->config & ~EVNTSEL_EN);
 	else {
 		uint32_t ctrl = rdmsr(MSR_CORE_PERF_FIXED_CTR_CTRL);
@@ -222,14 +238,13 @@ static bool verify_counter(pmu_counter_t *cnt)
 
 static void check_gp_counter(struct pmu_event *evt)
 {
-	int nr_gp_counters = pmu_nr_gp_counters();
 	pmu_counter_t cnt = {
-		.ctr = gp_counter_base,
 		.config = EVNTSEL_OS | EVNTSEL_USR | evt->unit_sel,
 	};
 	int i;
 
-	for (i = 0; i < nr_gp_counters; i++, cnt.ctr++) {
+	for (i = 0; i < nr_gp_counters; i++) {
+		cnt.ctr = get_gp_counter_msr(i);
 		measure_one(&cnt);
 		report(verify_event(cnt.count, evt), "%s-%d", evt->name, i);
 	}
@@ -239,12 +254,11 @@ static void check_gp_counters(void)
 {
 	int i;
 
-	for (i = 0; i < sizeof(gp_events)/sizeof(gp_events[0]); i++)
+	for (i = 0; i < gp_events_size; i++)
 		if (pmu_gp_counter_is_available(i))
-			check_gp_counter(&gp_events[i]);
+			check_gp_counter(&(*gp_events)[i]);
 		else
-			printf("GP event '%s' is disabled\n",
-					gp_events[i].name);
+			printf("GP event '%s' is disabled\n", (*gp_events)[i].name);
 }
 
 static void check_fixed_counters(void)
@@ -265,7 +279,6 @@ static void check_fixed_counters(void)
 static void check_counters_many(void)
 {
 	int nr_fixed_counters = pmu_nr_fixed_counters();
-	int nr_gp_counters = pmu_nr_gp_counters();
 	pmu_counter_t cnt[10];
 	int i, n;
 
@@ -273,9 +286,8 @@ static void check_counters_many(void)
 		if (!pmu_gp_counter_is_available(i))
 			continue;
 
-		cnt[n].ctr = gp_counter_base + n;
-		cnt[n].config = EVNTSEL_OS | EVNTSEL_USR |
-			gp_events[i % ARRAY_SIZE(gp_events)].unit_sel;
+		cnt[n].ctr = get_gp_counter_msr(n);
+		cnt[n].config = EVNTSEL_OS | EVNTSEL_USR | (*gp_events)[i % gp_events_size].unit_sel;
 		n++;
 	}
 	for (i = 0; i < nr_fixed_counters; i++) {
@@ -295,12 +307,11 @@ static void check_counters_many(void)
 
 static void check_counter_overflow(void)
 {
-	int nr_gp_counters = pmu_nr_gp_counters();
 	uint64_t count;
 	int i;
 	pmu_counter_t cnt = {
 		.ctr = gp_counter_base,
-		.config = EVNTSEL_OS | EVNTSEL_USR | gp_events[1].unit_sel /* instructions */,
+		.config = EVNTSEL_OS | EVNTSEL_USR | (*gp_events)[1].unit_sel /* instructions */,
 	};
 	__measure(&cnt, 0);
 	count = cnt.count;
@@ -313,10 +324,11 @@ static void check_counter_overflow(void)
 
 	report_prefix_push("overflow");
 
-	for (i = 0; i < nr_gp_counters + 1; i++, cnt.ctr++) {
+	for (i = 0; i < nr_gp_counters + 1; i++) {
 		uint64_t status;
 		int idx;
 
+		cnt.ctr = get_gp_counter_msr(i);
 		cnt.count = 1 - count;
 		if (gp_counter_base == MSR_IA32_PMC0)
 			cnt.count &= (1ull << pmu_gp_counter_width()) - 1;
@@ -359,11 +371,11 @@ static void check_gp_counter_cmask(void)
 {
 	pmu_counter_t cnt = {
 		.ctr = gp_counter_base,
-		.config = EVNTSEL_OS | EVNTSEL_USR | gp_events[1].unit_sel /* instructions */,
+		.config = EVNTSEL_OS | EVNTSEL_USR | (*gp_events)[1].unit_sel /* instructions */,
 	};
 	cnt.config |= (0x2 << EVNTSEL_CMASK_SHIFT);
 	measure_one(&cnt);
-	report(cnt.count < gp_events[1].min, "cmask");
+	report(cnt.count < (*gp_events)[1].min, "cmask");
 }
 
 static void do_rdpmc_fast(void *ptr)
@@ -383,7 +395,6 @@ static void check_rdpmc(void)
 	int fixed_counter_width = pmu_fixed_counter_width();
 	int nr_fixed_counters = pmu_nr_fixed_counters();
 	u8 gp_counter_width = pmu_gp_counter_width();
-	int nr_gp_counters = pmu_nr_gp_counters();
 	uint64_t val = 0xff0123456789ull;
 	bool exc;
 	int i;
@@ -393,7 +404,7 @@ static void check_rdpmc(void)
 	for (i = 0; i < nr_gp_counters; i++) {
 		uint64_t x;
 		pmu_counter_t cnt = {
-			.ctr = gp_counter_base + i,
+			.ctr = get_gp_counter_msr(i),
 			.idx = i
 		};
 
@@ -409,7 +420,7 @@ static void check_rdpmc(void)
 		/* Mask according to the number of supported bits */
 		x &= (1ull << gp_counter_width) - 1;
 
-		wrmsr(gp_counter_base + i, val);
+		wrmsr(get_gp_counter_msr(i), val);
 		report(rdpmc(i) == x, "cntr-%d", i);
 
 		exc = test_for_exception(GP_VECTOR, do_rdpmc_fast, &cnt);
@@ -444,7 +455,7 @@ static void check_running_counter_wrmsr(void)
 	uint64_t count;
 	pmu_counter_t evt = {
 		.ctr = gp_counter_base,
-		.config = EVNTSEL_OS | EVNTSEL_USR | gp_events[1].unit_sel,
+		.config = EVNTSEL_OS | EVNTSEL_USR | (*gp_events)[1].unit_sel,
 	};
 
 	report_prefix_push("running counter wrmsr");
@@ -453,7 +464,7 @@ static void check_running_counter_wrmsr(void)
 	loop();
 	wrmsr(gp_counter_base, 0);
 	stop_event(&evt);
-	report(evt.count < gp_events[1].min, "cntr");
+	report(evt.count < (*gp_events)[1].min, "cntr");
 
 	/* clear status before overflow test */
 	if (pmu_version() > 1) {
@@ -483,15 +494,16 @@ static void check_running_counter_wrmsr(void)
 static void check_emulated_instr(void)
 {
 	uint64_t status, instr_start, brnch_start;
+	unsigned int branch_idx = 5;
 	pmu_counter_t brnch_cnt = {
-		.ctr = MSR_IA32_PERFCTR0,
+		.ctr = get_gp_counter_msr(0),
 		/* branch instructions */
-		.config = EVNTSEL_OS | EVNTSEL_USR | gp_events[5].unit_sel,
+		.config = EVNTSEL_OS | EVNTSEL_USR | (*gp_events)[branch_idx].unit_sel,
 	};
 	pmu_counter_t instr_cnt = {
-		.ctr = MSR_IA32_PERFCTR0 + 1,
+		.ctr = get_gp_counter_msr(1),
 		/* instructions */
-		.config = EVNTSEL_OS | EVNTSEL_USR | gp_events[1].unit_sel,
+		.config = EVNTSEL_OS | EVNTSEL_USR | intel_gp_events[1].unit_sel,
 	};
 	report_prefix_push("emulated instruction");
 
@@ -505,8 +517,8 @@ static void check_emulated_instr(void)
 
 	brnch_start = -EXPECTED_BRNCH;
 	instr_start = -EXPECTED_INSTR;
-	wrmsr(MSR_IA32_PERFCTR0, brnch_start);
-	wrmsr(MSR_IA32_PERFCTR0 + 1, instr_start);
+	wrmsr(get_gp_counter_msr(0), brnch_start);
+	wrmsr(get_gp_counter_msr(1), instr_start);
 	// KVM_FEP is a magic prefix that forces emulation so
 	// 'KVM_FEP "jne label\n"' just counts as a single instruction.
 	asm volatile(
@@ -579,7 +591,6 @@ static void check_gp_counters_write_width(void)
 	u64 val_64 = 0xffffff0123456789ull;
 	u64 val_32 = val_64 & ((1ull << 32) - 1);
 	u64 val_max_width = val_64 & ((1ull << pmu_gp_counter_width()) - 1);
-	int nr_gp_counters = pmu_nr_gp_counters();
 	int i;
 
 	/*
@@ -627,14 +638,14 @@ static void check_gp_counters_write_width(void)
 static void set_ref_cycle_expectations(void)
 {
 	pmu_counter_t cnt = {
-		.ctr = MSR_IA32_PERFCTR0,
-		.config = EVNTSEL_OS | EVNTSEL_USR | gp_events[2].unit_sel,
+		.ctr = get_gp_counter_msr(0),
+		.config = EVNTSEL_OS | EVNTSEL_USR | intel_gp_events[2].unit_sel,
 	};
 	uint64_t tsc_delta;
 	uint64_t t0, t1, t2, t3;
 
 	/* Bit 2 enumerates the availability of reference cycles events. */
-	if (!pmu_nr_gp_counters() || !pmu_gp_counter_is_available(2))
+	if (!nr_gp_counters || !pmu_gp_counter_is_available(2))
 		return;
 
 	wrmsr(MSR_CORE_PERF_GLOBAL_CTRL, 0);
@@ -663,8 +674,8 @@ static void set_ref_cycle_expectations(void)
 	if (!tsc_delta)
 		return;
 
-	gp_events[2].min = (gp_events[2].min * cnt.count) / tsc_delta;
-	gp_events[2].max = (gp_events[2].max * cnt.count) / tsc_delta;
+	intel_gp_events[2].min = (intel_gp_events[2].min * cnt.count) / tsc_delta;
+	intel_gp_events[2].max = (intel_gp_events[2].max * cnt.count) / tsc_delta;
 }
 
 static bool detect_intel_pmu(void)
@@ -673,6 +684,12 @@ static bool detect_intel_pmu(void)
 		report_skip("No Intel Arch PMU is detected!");
 		return false;
 	}
+
+	nr_gp_counters = pmu_nr_gp_counters();
+	gp_events_size = sizeof(intel_gp_events)/sizeof(intel_gp_events[0]);
+	gp_events = (PMU_EVENTS_ARRAY_t *)intel_gp_events;
+	gp_counter_base = MSR_IA32_PERFCTR0;
+	gp_select_base = MSR_P6_EVNTSEL0;
 
 	report_prefix_push("Intel");
 	return true;
@@ -700,7 +717,7 @@ int main(int ac, char **av)
 	set_ref_cycle_expectations();
 
 	printf("PMU version:         %d\n", pmu_version());
-	printf("GP counters:         %d\n", pmu_nr_gp_counters());
+	printf("GP counters:         %d\n", nr_gp_counters);
 	printf("GP counter width:    %d\n", pmu_gp_counter_width());
 	printf("Mask length:         %d\n", pmu_gp_counter_mask_length());
 	printf("Fixed counters:      %d\n", pmu_nr_fixed_counters());
