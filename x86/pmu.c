@@ -667,16 +667,35 @@ static void set_ref_cycle_expectations(void)
 	gp_events[2].max = (gp_events[2].max * cnt.count) / tsc_delta;
 }
 
+static bool detect_intel_pmu(void)
+{
+	if (!pmu_version()) {
+		report_skip("No Intel Arch PMU is detected!");
+		return false;
+	}
+
+	report_prefix_push("Intel");
+	return true;
+}
+
+static bool pmu_is_detected(void)
+{
+	if (!is_intel()) {
+		report_skip("AMD PMU is not supported.");
+		return false;
+	}
+
+	return detect_intel_pmu();
+}
+
 int main(int ac, char **av)
 {
 	setup_vm();
 	handle_irq(PC_VECTOR, cnt_overflow);
 	buf = malloc(N*64);
 
-	if (!pmu_version()) {
-		report_skip("No Intel Arch PMU is detected!");
+	if (!pmu_is_detected())
 		return report_summary();
-	}
 
 	set_ref_cycle_expectations();
 
