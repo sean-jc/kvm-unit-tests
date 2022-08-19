@@ -125,14 +125,19 @@ static struct pmu_event* get_counter_event(pmu_counter_t *cnt)
 
 static void global_enable(pmu_counter_t *cnt)
 {
-	cnt->idx = event_to_global_idx(cnt);
+	if (pmu_version() < 2)
+		return;
 
+	cnt->idx = event_to_global_idx(cnt);
 	wrmsr(MSR_CORE_PERF_GLOBAL_CTRL, rdmsr(MSR_CORE_PERF_GLOBAL_CTRL) |
 			(1ull << cnt->idx));
 }
 
 static void global_disable(pmu_counter_t *cnt)
 {
+	if (pmu_version() < 2)
+		return;
+
 	wrmsr(MSR_CORE_PERF_GLOBAL_CTRL, rdmsr(MSR_CORE_PERF_GLOBAL_CTRL) &
 			~(1ull << cnt->idx));
 }
@@ -301,7 +306,10 @@ static void check_counter_overflow(void)
 	count = cnt.count;
 
 	/* clear status before test */
-	wrmsr(MSR_CORE_PERF_GLOBAL_OVF_CTRL, rdmsr(MSR_CORE_PERF_GLOBAL_STATUS));
+	if (pmu_version() > 1) {
+		wrmsr(MSR_CORE_PERF_GLOBAL_OVF_CTRL,
+		      rdmsr(MSR_CORE_PERF_GLOBAL_STATUS));
+	}
 
 	report_prefix_push("overflow");
 
@@ -327,13 +335,21 @@ static void check_counter_overflow(void)
 			cnt.config &= ~EVNTSEL_INT;
 		idx = event_to_global_idx(&cnt);
 		__measure(&cnt, cnt.count);
-		report(cnt.count == 1, "cntr-%d", i);
+
+		report(check_irq() == (i % 2), "irq-%d", i);
+		if (pmu_version() > 1)
+			report(cnt.count == 1, "cntr-%d", i);
+		else
+			report(cnt.count < 4, "cntr-%d", i);
+
+		if (pmu_version() < 2)
+			continue;
+
 		status = rdmsr(MSR_CORE_PERF_GLOBAL_STATUS);
 		report(status & (1ull << idx), "status-%d", i);
 		wrmsr(MSR_CORE_PERF_GLOBAL_OVF_CTRL, status);
 		status = rdmsr(MSR_CORE_PERF_GLOBAL_STATUS);
 		report(!(status & (1ull << idx)), "status clear-%d", i);
-		report(check_irq() == (i % 2), "irq-%d", i);
 	}
 
 	report_prefix_pop();
@@ -440,8 +456,10 @@ static void check_running_counter_wrmsr(void)
 	report(evt.count < gp_events[1].min, "cntr");
 
 	/* clear status before overflow test */
-	wrmsr(MSR_CORE_PERF_GLOBAL_OVF_CTRL,
-	      rdmsr(MSR_CORE_PERF_GLOBAL_STATUS));
+	if (pmu_version() > 1) {
+		wrmsr(MSR_CORE_PERF_GLOBAL_OVF_CTRL,
+			rdmsr(MSR_CORE_PERF_GLOBAL_STATUS));
+	}
 
 	start_event(&evt);
 
@@ -453,8 +471,11 @@ static void check_running_counter_wrmsr(void)
 
 	loop();
 	stop_event(&evt);
-	status = rdmsr(MSR_CORE_PERF_GLOBAL_STATUS);
-	report(status & 1, "status");
+
+	if (pmu_version() > 1) {
+		status = rdmsr(MSR_CORE_PERF_GLOBAL_STATUS);
+		report(status & 1, "status");
+	}
 
 	report_prefix_pop();
 }
@@ -474,8 +495,10 @@ static void check_emulated_instr(void)
 	};
 	report_prefix_push("emulated instruction");
 
-	wrmsr(MSR_CORE_PERF_GLOBAL_OVF_CTRL,
-	      rdmsr(MSR_CORE_PERF_GLOBAL_STATUS));
+	if (pmu_version() > 1) {
+		wrmsr(MSR_CORE_PERF_GLOBAL_OVF_CTRL,
+			rdmsr(MSR_CORE_PERF_GLOBAL_STATUS));
+	}
 
 	start_event(&brnch_cnt);
 	start_event(&instr_cnt);
@@ -509,7 +532,8 @@ static void check_emulated_instr(void)
 		:
 		: "eax", "ebx", "ecx", "edx");
 
-	wrmsr(MSR_CORE_PERF_GLOBAL_CTRL, 0);
+	if (pmu_version() > 1)
+		wrmsr(MSR_CORE_PERF_GLOBAL_CTRL, 0);
 
 	stop_event(&brnch_cnt);
 	stop_event(&instr_cnt);
@@ -520,10 +544,13 @@ static void check_emulated_instr(void)
 	       "instruction count");
 	report(brnch_cnt.count - brnch_start >= EXPECTED_BRNCH,
 	       "branch count");
-	// Additionally check that those counters overflowed properly.
-	status = rdmsr(MSR_CORE_PERF_GLOBAL_STATUS);
-	report(status & 1, "instruction counter overflow");
-	report(status & 2, "branch counter overflow");
+
+	if (pmu_version() > 1) {
+		// Additionally check that those counters overflowed properly.
+		status = rdmsr(MSR_CORE_PERF_GLOBAL_STATUS);
+		report(status & 1, "instruction counter overflow");
+		report(status & 2, "branch counter overflow");
+	}
 
 	report_prefix_pop();
 }
@@ -647,12 +674,7 @@ int main(int ac, char **av)
 	buf = malloc(N*64);
 
 	if (!pmu_version()) {
-		report_skip("No pmu is detected!");
-		return report_summary();
-	}
-
-	if (pmu_version() == 1) {
-		report_skip("PMU version 1 is not supported.");
+		report_skip("No Intel Arch PMU is detected!");
 		return report_summary();
 	}
 
