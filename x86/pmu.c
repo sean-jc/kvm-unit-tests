@@ -315,6 +315,9 @@ static void check_counter_overflow(void)
 
 		if (i == nr_gp_counters) {
 			cnt.ctr = fixed_events[0].unit_sel;
+			__measure(&cnt, 0);
+			count = cnt.count;
+			cnt.count = 1 - count;
 			cnt.count &= (1ull << pmu_fixed_counter_width()) - 1;
 		}
 
