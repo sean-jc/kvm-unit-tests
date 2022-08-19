@@ -130,6 +130,23 @@
 #define MSR_AMD64_IBSDCPHYSAD		0xc0011039
 #define MSR_AMD64_IBSCTL		0xc001103a
 
+/* Fam 15h MSRs */
+#define MSR_F15H_PERF_CTL              0xc0010200
+#define MSR_F15H_PERF_CTL0             MSR_F15H_PERF_CTL
+#define MSR_F15H_PERF_CTL1             (MSR_F15H_PERF_CTL + 2)
+#define MSR_F15H_PERF_CTL2             (MSR_F15H_PERF_CTL + 4)
+#define MSR_F15H_PERF_CTL3             (MSR_F15H_PERF_CTL + 6)
+#define MSR_F15H_PERF_CTL4             (MSR_F15H_PERF_CTL + 8)
+#define MSR_F15H_PERF_CTL5             (MSR_F15H_PERF_CTL + 10)
+
+#define MSR_F15H_PERF_CTR              0xc0010201
+#define MSR_F15H_PERF_CTR0             MSR_F15H_PERF_CTR
+#define MSR_F15H_PERF_CTR1             (MSR_F15H_PERF_CTR + 2)
+#define MSR_F15H_PERF_CTR2             (MSR_F15H_PERF_CTR + 4)
+#define MSR_F15H_PERF_CTR3             (MSR_F15H_PERF_CTR + 6)
+#define MSR_F15H_PERF_CTR4             (MSR_F15H_PERF_CTR + 8)
+#define MSR_F15H_PERF_CTR5             (MSR_F15H_PERF_CTR + 10)
+
 /* Fam 10h MSRs */
 #define MSR_FAM10H_MMIO_CONF_BASE	0xc0010058
 #define FAM10H_MMIO_CONF_ENABLE		(1<<0)

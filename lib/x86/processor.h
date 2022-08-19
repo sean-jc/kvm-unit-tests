@@ -794,6 +794,9 @@ static inline void flush_tlb(void)
 
 static inline u8 pmu_version(void)
 {
+	if (!is_intel())
+		return 0;
+
 	return cpuid(10).a & 0xff;
 }
 
@@ -807,19 +810,39 @@ static inline bool this_cpu_has_perf_global_ctrl(void)
 	return pmu_version() > 1;
 }
 
+#define AMD64_NUM_COUNTERS                             4
+#define AMD64_NUM_COUNTERS_CORE                                6
+
+static inline bool has_amd_perfctr_core(void)
+{
+	return cpuid(0x80000001).c & BIT_ULL(23);
+}
+
 static inline u8 pmu_nr_gp_counters(void)
 {
-	return (cpuid(10).a >> 8) & 0xff;
+	if (is_intel()) {
+		return (cpuid(10).a >> 8) & 0xff;
+	} else if (!has_amd_perfctr_core()) {
+		return AMD64_NUM_COUNTERS;
+	}
+
+	return AMD64_NUM_COUNTERS_CORE;
 }
 
 static inline u8 pmu_gp_counter_width(void)
 {
-	return (cpuid(10).a >> 16) & 0xff;
+	if (is_intel())
+		return (cpuid(10).a >> 16) & 0xff;
+	else
+		return 48;
 }
 
 static inline u8 pmu_gp_counter_mask_length(void)
 {
-	return (cpuid(10).a >> 24) & 0xff;
+	if (is_intel())
+		return (cpuid(10).a >> 24) & 0xff;
+	else
+		return pmu_nr_gp_counters();
 }
 
 static inline u8 pmu_nr_fixed_counters(void)
@@ -844,6 +867,9 @@ static inline u8 pmu_fixed_counter_width(void)
 
 static inline bool pmu_gp_counter_is_available(int i)
 {
+	if (!is_intel())
+		return i < pmu_nr_gp_counters();
+
 	/* CPUID.0xA.EBX bit is '1 if they counter is NOT available. */
 	return !(cpuid(10).b & BIT(i));
 }
