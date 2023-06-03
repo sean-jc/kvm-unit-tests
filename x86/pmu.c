@@ -498,6 +498,11 @@ static void check_emulated_instr(void)
 
 	brnch_start = -EXPECTED_BRNCH;
 	instr_start = -EXPECTED_INSTR;
+
+	if (pmu_use_full_writes()) {
+		brnch_start &= (1ull << pmu.gp_counter_width) - 1;
+		instr_start &= (1ull << pmu.gp_counter_width) - 1;
+	}
 	wrmsr(MSR_GP_COUNTERx(0), brnch_start);
 	wrmsr(MSR_GP_COUNTERx(1), instr_start);
 	// KVM_FEP is a magic prefix that forces emulation so
