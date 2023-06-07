@@ -2791,6 +2791,12 @@ do {										\
 		asm volatile("ud2");						\
 } while (0)
 
+#define REPORT_GUEST_LBR_ERROR(vmcb)						\
+	report(false, "LBR guest test failed.  Exit reason 0x%x, RIP = %lx, from = %lx, to = %lx, ex from = %lx, ex to = %lx", \
+		       vmcb->control.exit_code, vmcb->save.rip,			\
+		       vmcb->save.br_from, vmcb->save.br_to,			\
+		       vmcb->save.last_excp_from, vmcb->save.last_excp_to)
+
 #define DO_BRANCH(branch_name)				\
 	asm volatile (					\
 		      # branch_name "_from:"		\
@@ -2888,8 +2894,7 @@ static void svm_lbrv_test1(void)
 	dbgctl = rdmsr(MSR_IA32_DEBUGCTLMSR);
 
 	if (vmcb->control.exit_code != SVM_EXIT_VMMCALL) {
-		report(false, "VMEXIT not due to vmmcall. Exit reason 0x%x",
-		       vmcb->control.exit_code);
+		REPORT_GUEST_LBR_ERROR(vmcb);
 		return;
 	}
 
@@ -2912,8 +2917,7 @@ static void svm_lbrv_test2(void)
 	wrmsr(MSR_IA32_DEBUGCTLMSR, 0);
 
 	if (vmcb->control.exit_code != SVM_EXIT_VMMCALL) {
-		report(false, "VMEXIT not due to vmmcall. Exit reason 0x%x",
-		       vmcb->control.exit_code);
+		REPORT_GUEST_LBR_ERROR(vmcb);
 		return;
 	}
 
@@ -2940,8 +2944,7 @@ static void svm_lbrv_nested_test1(void)
 	wrmsr(MSR_IA32_DEBUGCTLMSR, 0);
 
 	if (vmcb->control.exit_code != SVM_EXIT_VMMCALL) {
-		report(false, "VMEXIT not due to vmmcall. Exit reason 0x%x",
-		       vmcb->control.exit_code);
+		REPORT_GUEST_LBR_ERROR(vmcb);
 		return;
 	}
 
@@ -2976,8 +2979,7 @@ static void svm_lbrv_nested_test2(void)
 	wrmsr(MSR_IA32_DEBUGCTLMSR, 0);
 
 	if (vmcb->control.exit_code != SVM_EXIT_VMMCALL) {
-		report(false, "VMEXIT not due to vmmcall. Exit reason 0x%x",
-		       vmcb->control.exit_code);
+		REPORT_GUEST_LBR_ERROR(vmcb);
 		return;
 	}
 
