@@ -117,6 +117,7 @@ static unsigned int get_adaptive_pebs_record_size(u64 pebs_data_cfg)
 
 static void cnt_overflow(isr_regs_t *regs)
 {
+	apic_write(APIC_LVTPC, apic_read(APIC_LVTPC) & ~APIC_LVT_MASKED);
 	apic_write(APIC_EOI, 0);
 }
 
