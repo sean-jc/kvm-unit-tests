@@ -694,13 +694,27 @@ static void test_simplealu(u32 *mem)
 	report(*mem == 0x8400, "test");
 }
 
-static void test_illegal_movbe(void)
+static void test_movbe(void)
 {
 	unsigned int vector;
 
 	if (!this_cpu_has(X86_FEATURE_MOVBE)) {
 		report_skip("MOVBE unsupported by CPU");
 		return;
+	}
+
+	if (is_fep_available()) {
+		u32 input = 0x11223344u;
+		u32 output;
+
+		asm volatile(KVM_FEP "movbel %1, %0"
+			     : "=r"(output) : "m"(input) : "memory");
+		report(output == 0x44332211u, "MOVBE, 32-bit operands, wanted %x, got %x", 0x44332211u, output);
+
+		/* Note, bits 31:16 of output should be unmodified. */
+		asm volatile(KVM_FEP "movbew %1, %0"
+			     : "=r"(*(u16 *)&output) : "m"(*(u16 *)&input) : "memory");
+		report(output == 0x44334433u, "MOVBE, 16-bit operands, wanted %x, got %x", 0x44334433u, output);
 	}
 
 	asm volatile(ASM_TRY("1f")
@@ -831,7 +845,7 @@ int main(void)
 	test_crosspage_mmio(mem);
 
 	test_string_io_mmio(mem);
-	test_illegal_movbe();
+	test_movbe();
 	test_mov_pop_ss_code_db();
 
 #ifdef __x86_64__
