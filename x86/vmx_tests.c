@@ -7233,6 +7233,7 @@ static void test_guest_efer(void)
 static void test_pat(u32 field, const char * field_name, u32 ctrl_field,
 		     u64 ctrl_bit)
 {
+	u64 pat_msr_saved = rdmsr(MSR_IA32_CR_PAT);
 	u32 ctrl_saved = vmcs_read(ctrl_field);
 	u64 pat_saved = vmcs_read(field);
 	u64 i, val;
@@ -7252,7 +7253,7 @@ static void test_pat(u32 field, const char * field_name, u32 ctrl_field,
 				report_prefix_pop();
 
 			} else {	// GUEST_PAT
-				test_guest_state("ENT_LOAD_PAT enabled", false,
+				test_guest_state("ENT_LOAD_PAT disabled", false,
 						 val, "GUEST_PAT");
 			}
 		}
@@ -7274,6 +7275,8 @@ static void test_pat(u32 field, const char * field_name, u32 ctrl_field,
 					error = 0;
 
 				test_vmx_vmlaunch(error);
+				wrmsr(MSR_IA32_CR_PAT, pat_msr_saved);
+
 				report_prefix_pop();
 
 			} else {	// GUEST_PAT
