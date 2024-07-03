@@ -55,6 +55,7 @@ struct pmu_event {
  * intel_gp_events[].
  */
 enum {
+	INTEL_REF_CYCLES_IDX	= 2,
 	INTEL_BRANCHES_IDX	= 5,
 };
 
@@ -699,7 +700,8 @@ static void set_ref_cycle_expectations(void)
 {
 	pmu_counter_t cnt = {
 		.ctr = MSR_IA32_PERFCTR0,
-		.config = EVNTSEL_OS | EVNTSEL_USR | intel_gp_events[2].unit_sel,
+		.config = EVNTSEL_OS | EVNTSEL_USR |
+			  intel_gp_events[INTEL_REF_CYCLES_IDX].unit_sel,
 	};
 	uint64_t tsc_delta;
 	uint64_t t0, t1, t2, t3;
@@ -735,8 +737,10 @@ static void set_ref_cycle_expectations(void)
 	if (!tsc_delta)
 		return;
 
-	intel_gp_events[2].min = (intel_gp_events[2].min * cnt.count) / tsc_delta;
-	intel_gp_events[2].max = (intel_gp_events[2].max * cnt.count) / tsc_delta;
+	intel_gp_events[INTEL_REF_CYCLES_IDX].min =
+		(intel_gp_events[INTEL_REF_CYCLES_IDX].min * cnt.count) / tsc_delta;
+	intel_gp_events[INTEL_REF_CYCLES_IDX].max =
+		(intel_gp_events[INTEL_REF_CYCLES_IDX].max * cnt.count) / tsc_delta;
 }
 
 static void check_invalid_rdpmc_gp(void)
