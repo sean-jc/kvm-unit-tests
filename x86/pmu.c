@@ -128,7 +128,8 @@ struct pmu_event {
 }, fixed_events[] = {
 	{"fixed 0", MSR_CORE_PERF_FIXED_CTR0, 10*N, 10.2*N},
 	{"fixed 1", MSR_CORE_PERF_FIXED_CTR0 + 1, 1*N, 30*N},
-	{"fixed 2", MSR_CORE_PERF_FIXED_CTR0 + 2, 0.1*N, 30*N}
+	{"fixed 2", MSR_CORE_PERF_FIXED_CTR0 + 2, 0.1*N, 30*N},
+	{"fixed 3", MSR_CORE_PERF_FIXED_CTR0 + 3, 0.001*N, 300*N}
 };
 
 /*
