@@ -12,7 +12,7 @@
 #define SBI_ERR_ALREADY_STARTED		-7
 #define SBI_ERR_ALREADY_STOPPED		-8
 
-#ifndef __ASSEMBLY__
+#ifndef __ASSEMBLER__
 #include <cpumask.h>
 
 enum sbi_ext_id {
@@ -92,5 +92,5 @@ struct sbiret sbi_send_ipi_broadcast(void);
 struct sbiret sbi_set_timer(unsigned long stime_value);
 long sbi_probe(int ext);
 
-#endif /* !__ASSEMBLY__ */
+#endif /* !__ASSEMBLER__ */
 #endif /* _ASMRISCV_SBI_H_ */
