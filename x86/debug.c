@@ -435,6 +435,53 @@ static void bus_lock_test(void)
 	got_ac = false;
 }
 
+static void singlestep_with_btf(void)
+{
+	unsigned long debugctl = rdmsr(MSR_IA32_DEBUGCTLMSR);
+	unsigned long jmp_target;
+	bool btf_supported;
+
+	write_dr6(0);
+
+	wrmsr(MSR_IA32_DEBUGCTLMSR, DEBUGCTLMSR_BTF);
+
+	/*
+	 * KVM doesn't currently support virtualizing BTF, but should clear the
+	 * bit to minimize guest confusing.
+	 */
+	btf_supported = rdmsr(MSR_IA32_DEBUGCTLMSR) & DEBUGCTLMSR_BTF;
+
+	asm volatile(
+		"pushf\n\t"
+		"pushf\n\t"
+		"orq $" __ASM_STR(X86_EFLAGS_TF) ", (%%rsp)\n\t"
+		"popf\n\t"
+		"nop\n\t"
+		"nop\n\t"
+		"nop\n\t"
+		"jmp 1f\n\t"
+		"nop\n\t"
+		"1: lea 1b(%%rip), %0\n\t"
+		"popf\n\t"
+		"nop\n\t"
+		: "=r" (jmp_target) : : "rax"
+	);
+
+	if (!btf_supported) {
+		report(n == 6, "Unsupported Single-step #DB: want %u #DBs, got %u", 6, n);
+		return;
+	}
+
+	report(n == 1 && is_single_step_db(dr6[0]) && db_addr[0] == jmp_target,
+	       "Block Single-step #DB: wanted 0x%lx, got 0x%lx", jmp_target, db_addr[0]);
+
+	/* CPU should automatically clear DEBUGCTL[BTF] on #DB exception */
+	report(rdmsr(MSR_IA32_DEBUGCTLMSR) == debugctl,
+	       "DebugCtl[BTF] should be reset on #DB, (wanted 0x%lx, got 0x%lx)",
+	       debugctl, rdmsr(MSR_IA32_DEBUGCTLMSR));
+	wrmsr(MSR_IA32_DEBUGCTLMSR, debugctl);
+}
+
 int main(int ac, char **av)
 {
 	unsigned long cr4;
@@ -503,6 +550,9 @@ int main(int ac, char **av)
 	run_ss_db_test(singlestep_with_movss_blocking_and_icebp);
 	run_ss_db_test(singlestep_with_movss_blocking_and_dr7_gd);
 	run_ss_db_test(singlestep_with_sti_hlt);
+
+	n = 0;
+	singlestep_with_btf();
 
 	n = 0;
 	write_dr1((void *)&value);
