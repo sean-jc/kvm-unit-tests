@@ -9,6 +9,7 @@
  * This work is licensed under the terms of the GNU GPL, version 2.
  */
 #include <asm/debugreg.h>
+#include <linux/const.h>
 
 #include "atomic.h"
 #include "libcflat.h"
@@ -150,12 +151,11 @@ static noinline unsigned long singlestep_basic(void)
 	 */
 	asm volatile (
 		"pushf\n\t"
-		"pop %%rax\n\t"
-		"or $(1<<8),%%rax\n\t"
-		"push %%rax\n\t"
+		"pushf\n\t"
+		"orq $" __ASM_STR(X86_EFLAGS_TF) ", (%%rsp)\n\t"
 		"popf\n\t"
-		"and $~(1<<8),%%rax\n\t"
-		"1:push %%rax\n\t"
+		"nop\n\t"
+		"1:nop\n\t"
 		"popf\n\t"
 		"lea 1b(%%rip), %0\n\t"
 		: "=r" (start) : : "rax"
@@ -187,12 +187,11 @@ static noinline unsigned long singlestep_emulated_instructions(void)
 	 */
 	asm volatile (
 		"pushf\n\t"
-		"pop %%rax\n\t"
-		"or $(1<<8),%%rax\n\t"
-		"push %%rax\n\t"
+		"pushf\n\t"
+		"orq $" __ASM_STR(X86_EFLAGS_TF) ", (%%rsp)\n\t"
 		"popf\n\t"
-		"and $~(1<<8),%%rax\n\t"
-		"1:push %%rax\n\t"
+		"nop\n\t"
+		"1:nop\n\t"
 		"xor %%rax,%%rax\n\t"
 		"cpuid\n\t"
 		"movl $0x3fd, %%edx\n\t"
@@ -207,11 +206,10 @@ static noinline unsigned long singlestep_emulated_instructions(void)
 static void report_singlestep_with_sti_blocking(unsigned long start,
 						const char *usermode)
 {
-	report(n == 4 &&
+	report(n == 3 &&
 	       is_single_step_db(dr6[0]) && db_addr[0] == start &&
-	       is_single_step_db(dr6[1]) && db_addr[1] == start + 6 &&
-	       is_single_step_db(dr6[2]) && db_addr[2] == start + 6 + 1 &&
-	       is_single_step_db(dr6[3]) && db_addr[3] == start + 6 + 1 + 1,
+	       is_single_step_db(dr6[1]) && db_addr[1] == start + 1 &&
+	       is_single_step_db(dr6[2]) && db_addr[2] == start + 1 + 1,
 	       "%sSingle-step #DB w/ STI blocking", usermode);
 }
 
@@ -227,13 +225,11 @@ static noinline unsigned long singlestep_with_sti_blocking(void)
 	asm volatile(
 		"cli\n\t"
 		"pushf\n\t"
-		"pop %%rax\n\t"
-		"or $(1<<8),%%rax\n\t"
-		"push %%rax\n\t"
+		"pushf\n\t"
+		"orq $" __ASM_STR(X86_EFLAGS_TF) ", (%%rsp)\n\t"
 		"popf\n\t"
 		"sti\n\t"
-		"1:and $~(1<<8),%%rax\n\t"
-		"push %%rax\n\t"
+		"1: nop\n\t"
 		"popf\n\t"
 		"lea 1b(%%rip),%0\n\t"
 		: "=r" (start_rip) : : "rax"
@@ -262,14 +258,13 @@ static noinline unsigned long singlestep_with_movss_blocking(void)
 	 */ 
 	asm volatile(
 		"pushf\n\t"
-		"pop %%rax\n\t"
-		"or $(1<<8),%%rax\n\t"
-		"push %%rax\n\t"
+		"pushf\n\t"
+		"orq $" __ASM_STR(X86_EFLAGS_TF) ", (%%rsp)\n\t"
 		"mov %%ss, %%ax\n\t"
 		"popf\n\t"
 		"mov %%ax, %%ss\n\t"
-		"and $~(1<<8),%%rax\n\t"
-		"1: push %%rax\n\t"
+		"nop\n\t"
+		"1: nop\n\t"
 		"popf\n\t"
 		"lea 1b(%%rip),%0\n\t"
 		: "=r" (start_rip) : : "rax"
@@ -281,11 +276,10 @@ static noinline unsigned long singlestep_with_movss_blocking(void)
 static void report_singlestep_with_movss_blocking_and_icebp(unsigned long start,
 							    const char *usermode)
 {
-	report(n == 4 &&
+	report(n == 3 &&
 	       is_icebp_db(dr6[0]) && db_addr[0] == start &&
-	       is_single_step_db(dr6[1]) && db_addr[1] == start + 6 &&
-	       is_single_step_db(dr6[2]) && db_addr[2] == start + 6 + 1 &&
-	       is_single_step_db(dr6[3]) && db_addr[3] == start + 6 + 1 + 1,
+	       is_single_step_db(dr6[1]) && db_addr[1] == start + 1&&
+	       is_single_step_db(dr6[2]) && db_addr[2] == start + 1 + 1,
 	       "%sSingle-Step + ICEBP #DB w/ MOVSS blocking", usermode);
 }
 
@@ -304,15 +298,13 @@ static noinline unsigned long singlestep_with_movss_blocking_and_icebp(void)
 	 */
 	asm volatile(
 		"pushf\n\t"
-		"pop %%rax\n\t"
-		"or $(1<<8),%%rax\n\t"
-		"push %%rax\n\t"
+		"pushf\n\t"
+		"orq $" __ASM_STR(X86_EFLAGS_TF) ", (%%rsp)\n\t"
 		"mov %%ss, %%ax\n\t"
 		"popf\n\t"
 		"mov %%ax, %%ss\n\t"
 		".byte 0xf1;"
-		"1:and $~(1<<8),%%rax\n\t"
-		"push %%rax\n\t"
+		"1: nop\n\t"
 		"popf\n\t"
 		"lea 1b(%%rip),%0\n\t"
 		: "=r" (start) : : "rax"
@@ -323,12 +315,10 @@ static noinline unsigned long singlestep_with_movss_blocking_and_icebp(void)
 static void report_singlestep_with_movss_blocking_and_dr7_gd(unsigned long start,
 							     const char *ign)
 {
-	report(n == 5 &&
+	report(n == 3 &&
 	       is_general_detect_db(dr6[0]) && db_addr[0] == start &&
 	       is_single_step_db(dr6[1]) && db_addr[1] == start + 3 &&
-	       is_single_step_db(dr6[2]) && db_addr[2] == start + 3 + 6 &&
-	       is_single_step_db(dr6[3]) && db_addr[3] == start + 3 + 6 + 1 &&
-	       is_single_step_db(dr6[4]) && db_addr[4] == start + 3 + 6 + 1 + 1,
+	       is_single_step_db(dr6[2]) && db_addr[2] == start + 3 + 1,
 	       "Single-step #DB w/ MOVSS blocking and DR7.GD=1");
 }
 
@@ -348,15 +338,12 @@ static noinline unsigned long singlestep_with_movss_blocking_and_dr7_gd(void)
 	asm volatile(
 		"xor %0, %0\n\t"
 		"pushf\n\t"
-		"pop %%rax\n\t"
-		"or $(1<<8),%%rax\n\t"
-		"push %%rax\n\t"
+		"pushf\n\t"
+		"orq $" __ASM_STR(X86_EFLAGS_TF) ", (%%rsp)\n\t"
 		"mov %%ss, %%ax\n\t"
 		"popf\n\t"
 		"mov %%ax, %%ss\n\t"
 		"1: mov %0, %%dr6\n\t"
-		"and $~(1<<8),%%rax\n\t"
-		"push %%rax\n\t"
 		"popf\n\t"
 		"lea 1b(%%rip),%0\n\t"
 		: "=r" (start_rip) : : "rax"
@@ -367,12 +354,11 @@ static noinline unsigned long singlestep_with_movss_blocking_and_dr7_gd(void)
 static void report_singlestep_with_sti_hlt(unsigned long start,
 						const char *usermode)
 {
-	report(n == 5 &&
+	report(n == 4 &&
 	       is_single_step_db(dr6[0]) && db_addr[0] == start &&
 	       is_single_step_db(dr6[1]) && db_addr[1] == start + 1 &&
-	       is_single_step_db(dr6[2]) && db_addr[2] == start + 1 + 6 &&
-	       is_single_step_db(dr6[3]) && db_addr[3] == start + 1 + 6 + 1 &&
-	       is_single_step_db(dr6[4]) && db_addr[4] == start + 1 + 6 + 1 + 1,
+	       is_single_step_db(dr6[2]) && db_addr[2] == start + 1 + 1 &&
+	       is_single_step_db(dr6[3]) && db_addr[3] == start + 1 + 1 + 1,
 	       "%sSingle-step #DB w/ STI;HLT", usermode);
 }
 
@@ -401,14 +387,12 @@ static noinline unsigned long singlestep_with_sti_hlt(void)
 	 */
 	asm volatile(
 		"pushf\n\t"
-		"pop %%rax\n\t"
-		"or $(1<<8),%%rax\n\t"
-		"push %%rax\n\t"
+		"pushf\n\t"
+		"orq $" __ASM_STR(X86_EFLAGS_TF) ", (%%rsp)\n\t"
 		"popf\n\t"
 		"sti\n\t"
 		"1:hlt;\n\t"
-		"and $~(1<<8),%%rax\n\t"
-		"push %%rax\n\t"
+		"nop\n\t"
 		"popf\n\t"
 		"lea 1b(%%rip),%0\n\t"
 		: "=r" (start_rip) : : "rax"
