@@ -20,7 +20,8 @@
 #define __AC(X,Y)	(X##Y)
 #define _AC(X,Y)	__AC(X,Y)
 #define _AT(T,X)	((T)(X))
-#define __ASM_STR(X)	#X
+#define __ASM_STR1(X)	#X
+#define __ASM_STR(X)	__ASM_STR1(X)
 #endif
 
 #define _BITUL(x)	(_AC(1,UL) << (x))
