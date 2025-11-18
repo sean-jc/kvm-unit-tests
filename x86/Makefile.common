@@ -51,7 +51,9 @@ ifneq ($(KEEP_FRAME_POINTER),)
 # We need to defer the cc-option test until -fno-pic or -no-pie have been
 # added to CFLAGS as -mnop-mcount needs it. The lazy evaluation of CFLAGS
 # during compilation makes this do "The Right Thing."
-LATE_CFLAGS += $(call cc-option, -pg -mnop-mcount, "")
+NOP_PGFLAGS := -pg -mnop-mcount
+LATE_CFLAGS += $(call cc-option, $(NOP_PGFLAGS), "")
+NO_NOP_MCOUNT = $(if $(filter $(NOP_PGFLAGS),$(LATE_CFLAGS)),-mno-nop-mcount)
 endif
 
 FLATLIBS = lib/libcflat.a
@@ -123,6 +125,7 @@ $(TEST_DIR)/realmode.elf: $(TEST_DIR)/realmode.o $(SRCDIR)/$(TEST_DIR)/realmode.
 	      -T $(SRCDIR)/$(TEST_DIR)/realmode.lds $(filter %.o, $^)
 
 $(TEST_DIR)/realmode.o: bits = $(realmode_bits)
+$(TEST_DIR)/realmode.o: CFLAGS += $(NO_NOP_MCOUNT)
 
 $(TEST_DIR)/access_test.$(bin): $(TEST_DIR)/access.o
 
