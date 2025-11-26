@@ -353,9 +353,14 @@ static u32 find_vmcs_max_index(void)
 				      (width << VMCS_FIELD_WIDTH_SHIFT);
 
 				ret = vmcs_read_safe(enc, &actual);
+				if (enc == 0x0000482E)
+					printf("VMREAD for preemption timer flags = %x (ZF = %u)\n",
+					       ret, !!(ret & X86_EFLAGS_ZF));
 				assert(!(ret & X86_EFLAGS_CF));
-				if (!(ret & X86_EFLAGS_ZF))
+				if (!(ret & X86_EFLAGS_ZF)) {
+					printf("Max idx = %x for encoding = %x\n", idx, enc);
 					return idx;
+				}
 			}
 		}
 	}
