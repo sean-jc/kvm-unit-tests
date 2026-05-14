@@ -214,9 +214,7 @@ static inline void loop(u64 cntrs)
 		__precise_loop(cntrs);
 }
 
-static void adjust_events_range(struct pmu_event *gp_events,
-				int instruction_idx, int branch_idx,
-				int branch_miss_idx)
+static bool pmu_has_precise_counts(void)
 {
 	/*
 	 * If HW supports GLOBAL_CTRL MSR, enabling and disabling PMCs are
@@ -224,11 +222,18 @@ static void adjust_events_range(struct pmu_event *gp_events,
 	 * can be verified against a precise count instead of a rough range.
 	 *
 	 * Skip the precise checks on AMD, as AMD CPUs count VMRUN as a branch
-	 * instruction in guest context, which* leads to intermittent failures
+	 * instruction in guest context, which leads to intermittent failures
 	 * as the counts will vary depending on how many asynchronous VM-Exits
 	 * occur while running the measured code, e.g. if the host takes IRQs.
 	 */
-	if (pmu.is_intel && this_cpu_has_perf_global_ctrl()) {
+	return pmu.is_intel && this_cpu_has_perf_global_ctrl();
+}
+
+static void adjust_events_range(struct pmu_event *gp_events,
+				int instruction_idx, int branch_idx,
+				int branch_miss_idx)
+{
+	if (pmu_has_precise_counts()) {
 		if (!pmu.errata.instructions_retired_overcount) {
 			gp_events[instruction_idx].min = LOOP_INSNS;
 			gp_events[instruction_idx].max = LOOP_INSNS;
@@ -756,9 +761,8 @@ static void check_emulated_instr(void)
 		/* instructions */
 		.config = EVNTSEL_OS | EVNTSEL_USR | gp_events[instruction_idx].unit_sel,
 	};
-	const bool has_perf_global_ctrl = this_cpu_has_perf_global_ctrl();
 
-	report_prefix_push("emulated instruction");
+	report_prefix_push("forced emulation");
 
 	if (this_cpu_has_perf_global_status())
 		pmu_clear_global_status();
@@ -771,7 +775,7 @@ static void check_emulated_instr(void)
 	wrmsr(MSR_GP_COUNTERx(0), brnch_start & gp_counter_width);
 	wrmsr(MSR_GP_COUNTERx(1), instr_start & gp_counter_width);
 
-	if (has_perf_global_ctrl) {
+	if (this_cpu_has_perf_global_ctrl()) {
 		eax = BIT(0) | BIT(1);
 		ecx = pmu.msr_global_ctl;
 		edx = 0;
@@ -786,15 +790,23 @@ static void check_emulated_instr(void)
 
 	// Check that the end count - start count is at least the expected
 	// number of instructions and branches.
-	if (has_perf_global_ctrl && !pmu.errata.instructions_retired_overcount)
-		report(instr_cnt.count - instr_start == KVM_FEP_INSNS, "instruction count");
+	if (pmu_has_precise_counts() && !pmu.errata.instructions_retired_overcount)
+		report(instr_cnt.count - instr_start == KVM_FEP_INSNS,
+		       "precise instructions: Wanted %u, got %" PRIu64,
+		       KVM_FEP_INSNS, instr_cnt.count - instr_start);
 	else
-		report(instr_cnt.count - instr_start >= KVM_FEP_INSNS, "instruction count");
+		report(instr_cnt.count - instr_start >= KVM_FEP_INSNS,
+		       "fuzzy instructions: Wanted >= %u, got %" PRIu64,
+		       KVM_FEP_INSNS, instr_cnt.count - instr_start);
 
-	if (has_perf_global_ctrl && !pmu.errata.branches_retired_overcount)
-		report(brnch_cnt.count - brnch_start == KVM_FEP_BRANCHES, "branch count");
+	if (pmu_has_precise_counts() && !pmu.errata.branches_retired_overcount)
+		report(brnch_cnt.count - brnch_start == KVM_FEP_BRANCHES,
+		       "precise branches: Wanted %u, got %" PRIu64,
+		       KVM_FEP_BRANCHES, brnch_cnt.count - brnch_start);
 	else
-		report(brnch_cnt.count - brnch_start >= KVM_FEP_BRANCHES, "branch count");
+		report(brnch_cnt.count - brnch_start >= KVM_FEP_BRANCHES,
+		       "fuzzy branches: Wanted >= %u, got %" PRIu64,
+		       KVM_FEP_BRANCHES, brnch_cnt.count - brnch_start);
 
 	if (this_cpu_has_perf_global_status()) {
 		// Additionally check that those counters overflowed properly.

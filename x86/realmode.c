@@ -23,6 +23,9 @@ void test_function(void);
 asm(
 	"test_function: \n\t"
 	"mov $0x1234, %eax \n\t"
+	"ret\n\t"
+	/* mcount() stub */
+	"mcount:\n\t"
 	"ret"
    );
 
