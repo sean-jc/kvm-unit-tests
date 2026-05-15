@@ -93,6 +93,7 @@ typedef void (*db_report_fn)(unsigned long, const char *);
 
 static unsigned long singlestep_with_movss_blocking_and_dr7_gd(void);
 static unsigned long singlestep_with_sti_hlt(void);
+static unsigned long singlestep_with_movss_blocking_and_data_db(void);
 
 static unsigned long run_single_step_db_test_kernel(db_test_fn test,
 						    db_report_fn report_fn)
@@ -140,8 +141,9 @@ static void __run_single_step_db_test(db_test_fn test, db_report_fn report_fn)
 	 * Likewise for HLT.  The data breakpoint test manually runs itself in
 	 * usermode (needs to do DR7 setup on behalf of usermode).
 	 */
-	if (test == singlestep_with_movss_blocking_and_dr7_gd
-	    || test == singlestep_with_sti_hlt)
+	if (test == singlestep_with_movss_blocking_and_dr7_gd ||
+	    test == singlestep_with_sti_hlt ||
+	    test == singlestep_with_movss_blocking_and_data_db)
 		return;
 
 	run_single_step_db_test_user(test, report_fn, start);
@@ -382,6 +384,81 @@ static noinline unsigned long singlestep_with_movss_blocking_and_dr7_gd(void)
 	return start_rip;
 }
 
+static void report_singlestep_with_movss_blocking_and_data_db(unsigned long start,
+							      const char *usermode)
+{
+	const unsigned long expected_dr6 = DR6_ACTIVE_LOW | DR6_BS | DR6_TRAP1 | DR6_TRAP2;
+
+	/*
+	 * Note, AND with any register except RAX (RDI in this case) uses a
+	 * 2-byte opcode, whereas AND with RAX has a dedicated 1-byte opcode;
+	 * x86 in a nutshell!  Thus the total size size of the AND is 7 bytes,
+	 * not 6: opcode (2) + REX (1) + sign-extended immediate (4).
+	 */
+	report(n == 4 &&
+	       expected_dr6 == dr6[0] && db_addr[0] == start &&
+	       is_single_step_db(dr6[1]) && db_addr[1] == start + 7 &&
+	       is_single_step_db(dr6[2]) && db_addr[2] == start + 7 + 1 &&
+	       is_single_step_db(dr6[3]) && db_addr[3] == start + 7 + 1 + 1,
+	       "%sSingle-step #DB w/ data match after MOV-SS blocking, n = %u, DR6 = %lx %lx %lx %lx, addr = %lx %lx %lx %lx (start = %lx)",
+	       usermode, n, dr6[0], dr6[1], dr6[2], dr6[3],
+	       db_addr[0], db_addr[1], db_addr[2], db_addr[3], start + 6);
+	report(n == 4 &&
+	       expected_dr6 == dr6[0] && db_addr[0] == start &&
+	       is_single_step_db(dr6[1]) && db_addr[1] == start + 7 &&
+	       is_single_step_db(dr6[2]) && db_addr[2] == start + 7 + 1 &&
+	       is_single_step_db(dr6[3]) && db_addr[3] == start + 7 + 1 + 1,
+	       "%sSingle-step #DB w/ data match after MOV-SS blocking", usermode);
+}
+
+static unsigned short ss_bp;
+
+static noinline unsigned long __singlestep_with_movss_blocking_and_data_db(void)
+{
+	unsigned long start;
+
+	asm volatile(
+		"pushf\n\t"
+		"pop %%rdi\n\t"
+		"or $(1<<8),%%rdi\n\t"
+		"push %%rdi\n\t"
+		"popf\n\t"
+		"mov (%%rsi), %%ss\n\t"
+		"cpuid\n\t"
+		"1:and $~(1<<8),%%rdi\n\t"
+		"push %%rdi\n\t"
+		"popf\n\t"
+		"lea 1b(%%rip),%0\n\t"
+		: "=r" (start) : "S"(&ss_bp) : "rax", "rbx", "rcx", "rdx"
+	);
+
+	return start;
+}
+
+static noinline unsigned long singlestep_with_movss_blocking_and_data_db(void)
+{
+	unsigned long start;
+
+	ss_bp = read_ss();
+
+	write_dr1(&ss_bp);
+	write_dr2(&ss_bp);
+	write_dr7(DR7_FIXED_1 | DR7_GLOBAL_ENABLE_DR1 | DR7_GLOBAL_ENABLE_DR2 |
+		  DR7_DATA_IO_DRx(1) | DR7_DATA_IO_DRx(2) |
+		  DR7_LEN_2_DRx(1) | DR7_LEN_2_DRx(2));
+
+	start = __singlestep_with_movss_blocking_and_data_db();
+
+	ss_bp = USER_DS;
+	run_single_step_db_test_user(__singlestep_with_movss_blocking_and_data_db,
+				     report_singlestep_with_movss_blocking_and_data_db,
+				     start);
+
+	write_dr7(DR7_FIXED_1);
+
+	return start;
+}
+
 static void report_singlestep_with_sti_hlt(unsigned long start,
 						const char *usermode)
 {
@@ -540,6 +617,7 @@ int main(int ac, char **av)
 	run_ss_db_test(singlestep_with_movss_blocking);
 	run_ss_db_test(singlestep_with_movss_blocking_and_icebp);
 	run_ss_db_test(singlestep_with_movss_blocking_and_dr7_gd);
+	run_ss_db_test(singlestep_with_movss_blocking_and_data_db);
 	run_ss_db_test(singlestep_with_sti_hlt);
 
 	n = 0;
