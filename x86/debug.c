@@ -94,10 +94,10 @@ typedef void (*db_report_fn)(unsigned long, const char *);
 static unsigned long singlestep_with_movss_blocking_and_dr7_gd(void);
 static unsigned long singlestep_with_sti_hlt(void);
 
-static void __run_single_step_db_test(db_test_fn test, db_report_fn report_fn)
+static unsigned long run_single_step_db_test_kernel(db_test_fn test,
+						    db_report_fn report_fn)
 {
 	unsigned long start;
-	bool ign;
 
 	n = 0;
 	write_dr6(0);
@@ -105,13 +105,13 @@ static void __run_single_step_db_test(db_test_fn test, db_report_fn report_fn)
 	start = test();
 	report_fn(start, "");
 
-	/*
-	 * MOV DR #GPs at CPL>0, don't try to run the DR7.GD test in usermode.
-	 * Likewise for HLT.
-	 */
-	if (test == singlestep_with_movss_blocking_and_dr7_gd
-	    || test == singlestep_with_sti_hlt)
-		return;
+	return start;
+}
+
+static void run_single_step_db_test_user(db_test_fn test, db_report_fn report_fn,
+					 unsigned long start)
+{
+	bool ign;
 
 	n = 0;
 	write_dr6(0);
@@ -127,6 +127,24 @@ static void __run_single_step_db_test(db_test_fn test, db_report_fn report_fn)
 	set_iopl(0);
 
 	report_fn(start, "Usermode ");
+}
+
+static void __run_single_step_db_test(db_test_fn test, db_report_fn report_fn)
+{
+	unsigned long start;
+
+	start = run_single_step_db_test_kernel(test, report_fn);
+
+	/*
+	 * MOV DR #GPs at CPL>0, don't try to run the DR7.GD test in usermode.
+	 * Likewise for HLT.  The data breakpoint test manually runs itself in
+	 * usermode (needs to do DR7 setup on behalf of usermode).
+	 */
+	if (test == singlestep_with_movss_blocking_and_dr7_gd
+	    || test == singlestep_with_sti_hlt)
+		return;
+
+	run_single_step_db_test_user(test, report_fn, start);
 }
 
 #define run_ss_db_test(name) __run_single_step_db_test(name, report_##name)
