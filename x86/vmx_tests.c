@@ -1858,21 +1858,18 @@ static int nmi_hlt_exit_handler(union exit_reason exit_reason)
 }
 
 
-static int dbgctls_init(struct vmcs *vmcs)
+static int dbgctls_dr7_init(struct vmcs *vmcs)
 {
 	u64 dr7 = 0x402;
 	u64 zero = 0;
 
-	msr_bmp_init();
 	asm volatile(
 		"mov %0,%%dr0\n\t"
 		"mov %0,%%dr1\n\t"
 		"mov %0,%%dr2\n\t"
 		"mov %1,%%dr7\n\t"
 		: : "r" (zero), "r" (dr7));
-	wrmsr(MSR_IA32_DEBUGCTLMSR, 0x1);
 	vmcs_write(GUEST_DR7, 0x404);
-	vmcs_write(GUEST_DEBUGCTL, 0x2);
 
 	vmcs_write(ENT_CONTROLS, vmcs_read(ENT_CONTROLS) | ENT_LOAD_DBGCTLS);
 	vmcs_write(EXI_CONTROLS, vmcs_read(EXI_CONTROLS) | EXI_SAVE_DBGCTLS);
@@ -1880,23 +1877,19 @@ static int dbgctls_init(struct vmcs *vmcs)
 	return VMX_TEST_START;
 }
 
-static void dbgctls_main(void)
+static void dbgctls_dr7_main(void)
 {
-	u64 dr7, debugctl;
+	u64 dr7;
 
 	asm volatile("mov %%dr7,%0" : "=r" (dr7));
-	debugctl = rdmsr(MSR_IA32_DEBUGCTLMSR);
-	/* Commented out: KVM does not support DEBUGCTL so far */
-	(void)debugctl;
-	report(dr7 == 0x404, "Load debug controls" /* && debugctl == 0x2 */);
+	report(dr7 == 0x404, "DR7: Load debug controls");
 
 	dr7 = 0x408;
 	asm volatile("mov %0,%%dr7" : : "r" (dr7));
-	wrmsr(MSR_IA32_DEBUGCTLMSR, 0x3);
 
 	vmx_set_test_stage(0);
 	vmcall();
-	report(vmx_get_test_stage() == 1, "Save debug controls");
+	report(vmx_get_test_stage() == 1, "DR7: Save debug controls");
 
 	if (ctrl_enter_rev.set & ENT_LOAD_DBGCTLS ||
 	    ctrl_exit_rev.set & EXI_SAVE_DBGCTLS) {
@@ -1907,46 +1900,37 @@ static void dbgctls_main(void)
 	vmcall();
 
 	asm volatile("mov %%dr7,%0" : "=r" (dr7));
-	debugctl = rdmsr(MSR_IA32_DEBUGCTLMSR);
-	/* Commented out: KVM does not support DEBUGCTL so far */
-	(void)debugctl;
 	report(dr7 == 0x402,
-	       "Guest=host debug controls" /* && debugctl == 0x1 */);
+	       "DR7: Guest=host debug controls");
 
 	dr7 = 0x408;
 	asm volatile("mov %0,%%dr7" : : "r" (dr7));
-	wrmsr(MSR_IA32_DEBUGCTLMSR, 0x3);
 
 	vmx_set_test_stage(3);
 	vmcall();
-	report(vmx_get_test_stage() == 4, "Don't save debug controls");
+	report(vmx_get_test_stage() == 4, "DR7: Don't save debug controls");
 }
 
-static int dbgctls_exit_handler(union exit_reason exit_reason)
+static int dbgctls_dr7_exit_handler(union exit_reason exit_reason)
 {
 	u32 insn_len = vmcs_read(EXI_INST_LEN);
 	u64 guest_rip = vmcs_read(GUEST_RIP);
-	u64 dr7, debugctl;
+	u64 dr7;
 
 	asm volatile("mov %%dr7,%0" : "=r" (dr7));
-	debugctl = rdmsr(MSR_IA32_DEBUGCTLMSR);
 
 	switch (exit_reason.basic) {
 	case VMX_VMCALL:
 		switch (vmx_get_test_stage()) {
 		case 0:
-			if (dr7 == 0x400 && debugctl == 0 &&
-			    vmcs_read(GUEST_DR7) == 0x408 /* &&
-			    Commented out: KVM does not support DEBUGCTL so far
-			    vmcs_read(GUEST_DEBUGCTL) == 0x3 */)
+			if (dr7 == 0x400 &&
+			    vmcs_read(GUEST_DR7) == 0x408)
 				vmx_inc_test_stage();
 			break;
 		case 2:
 			dr7 = 0x402;
 			asm volatile("mov %0,%%dr7" : : "r" (dr7));
-			wrmsr(MSR_IA32_DEBUGCTLMSR, 0x1);
 			vmcs_write(GUEST_DR7, 0x404);
-			vmcs_write(GUEST_DEBUGCTL, 0x2);
 
 			vmcs_write(ENT_CONTROLS,
 				vmcs_read(ENT_CONTROLS) & ~ENT_LOAD_DBGCTLS);
@@ -1954,10 +1938,8 @@ static int dbgctls_exit_handler(union exit_reason exit_reason)
 				vmcs_read(EXI_CONTROLS) & ~EXI_SAVE_DBGCTLS);
 			break;
 		case 3:
-			if (dr7 == 0x400 && debugctl == 0 &&
-			    vmcs_read(GUEST_DR7) == 0x404 /* &&
-			    Commented out: KVM does not support DEBUGCTL so far
-			    vmcs_read(GUEST_DEBUGCTL) == 0x2 */)
+			if (dr7 == 0x400 &&
+			    vmcs_read(GUEST_DR7) == 0x404)
 				vmx_inc_test_stage();
 			break;
 		}
@@ -11813,7 +11795,7 @@ struct vmx_test vmx_tests[] = {
 	{ "PML", pml_init, pml_main, pml_exit_handler },
 	{ "interrupt", interrupt_init, interrupt_main, interrupt_exit_handler },
 	{ "nmi_hlt", nmi_hlt_init, nmi_hlt_main, nmi_hlt_exit_handler },
-	{ "debug controls", dbgctls_init, dbgctls_main, dbgctls_exit_handler },
+	{ "dbgctls_dr7", dbgctls_dr7_init, dbgctls_dr7_main, dbgctls_dr7_exit_handler },
 	{ "MSR switch", msr_switch_init, msr_switch_main,
 		msr_switch_exit_handler, msr_switch_entry_failure },
 	{ "vmmcall", vmmcall_init, vmmcall_main, vmmcall_exit_handler },
