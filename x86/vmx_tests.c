@@ -11774,6 +11774,155 @@ static void vmx_cet_test(void)
 	test_set_guest_finished();
 }
 
+static u64 vmx_debugctl_test_val;
+
+static void vmx_debugctl_test_guest(void)
+{
+	for (;;) {
+		vmx_debugctl_test_val = rdmsr(MSR_IA32_DEBUGCTLMSR);
+		vmcall();
+
+		wrmsr(MSR_IA32_DEBUGCTLMSR, vmx_debugctl_test_val);
+		vmcall();
+	}
+}
+
+static void __run_vmx_debugctl_guest(void)
+{
+	u64 val;
+
+	enter_guest();
+	skip_exit_vmcall();
+
+	/* Verify DEBUGCTL is unconditionally zeroed on VM-Exit. */
+	val = rdmsr(MSR_IA32_DEBUGCTLMSR);
+	if (val)
+		report_fail("DEBUGCTL = 0x%lx (not zeroed on VM-Exit)", val);
+}
+
+static u64 run_vmx_debugctl_guest(u64 msr_val, u64 vmcs_val, u64 write_val)
+{
+	u64 read_val;
+
+	wrmsr(MSR_IA32_DEBUGCTLMSR, msr_val);
+	vmcs_write(GUEST_DEBUGCTL, vmcs_val);
+
+	__run_vmx_debugctl_guest();
+	read_val = vmx_debugctl_test_val;
+
+	vmx_debugctl_test_val = write_val;
+	__run_vmx_debugctl_guest();
+
+	return read_val;
+}
+
+static void __vmx_debugctl_test(u64 host_val, u64 guest_val)
+{
+	u64 val, rand;
+
+	/* Validate VM-Entrywhen save/load debug controls are set */
+	vmcs_set_bits(ENT_CONTROLS, ENT_LOAD_DBGCTLS);
+	vmcs_set_bits(EXI_CONTROLS, EXI_SAVE_DBGCTLS);
+
+	/* Verify guest DEBUGCTL is loaded/saved when the controls are set. */
+	val = run_vmx_debugctl_guest(host_val, guest_val, 0);
+	report(val == guest_val, "Load DEBUGCTL = 0x%lx, guest RDMSR = 0x%lx", guest_val, val);
+	val = vmcs_read(GUEST_DEBUGCTL);
+	report(!val, "Save DEBUGCTL = 0x0, guest WRMSR = 0x%lx", val);
+
+	/* Rerun the test with the guest values flipped. */
+	val = run_vmx_debugctl_guest(host_val, 0, guest_val);
+	report(!val, "Load DEBUGCTL = 0x0, guest RDMSR = 0x%lx", val);
+	val = vmcs_read(GUEST_DEBUGCTL);
+	report(val == guest_val, "Save DEBUGCTL = 0x0%lx, guest WRMSR = 0x%lx", val, guest_val);
+
+	/*
+	 * If running without the LOAD control set is supported, validate that
+	 * the guest sees the host's value.  Scribble vmcs.GUEST_DEBUGCTL with
+	 * a random value to verify it's ignored.
+	 */
+	if (!(ctrl_enter_rev.set & ENT_LOAD_DBGCTLS)) {
+		vmcs_clear_bits(ENT_CONTROLS, ENT_LOAD_DBGCTLS);
+
+		val = run_vmx_debugctl_guest(host_val, rdtsc(), guest_val);
+		report(val == host_val, "Host DEBUGCTL = 0x%lx, guest RDMSR = 0x%lx", host_val, val);
+
+		/* The guest value should still be saved on exit! */
+		val = vmcs_read(GUEST_DEBUGCTL);
+		report(val == guest_val, "Save DEBUGCTL = 0x%lx, guest WRMSR = 0x%lx", val, guest_val);
+
+		vmcs_set_bits(ENT_CONTROLS, ENT_LOAD_DBGCTLS);
+	}
+
+	if (!(ctrl_exit_rev.set & EXI_SAVE_DBGCTLS)) {
+		vmcs_clear_bits(EXI_CONTROLS, EXI_SAVE_DBGCTLS);
+
+		/* Verify the guest's value is NOT saved on exit.*/
+		val = run_vmx_debugctl_guest(host_val, guest_val, 0);
+		report(val == guest_val, "Load DEBUGCTL = 0x%lx, guest RDMSR = 0x%lx", guest_val, val);
+		val = vmcs_read(GUEST_DEBUGCTL);
+		report(val == guest_val, "VMREAD DEBUGCTL = 0x%lx, VMWRITE = 0x%lx", val, guest_val);
+
+		/* And again with the values flipped. */
+		val = run_vmx_debugctl_guest(host_val, 0, guest_val);
+		report(!val, "Load DEBUGCTL = 0x0, guest RDMSR = 0x%lx", val);
+		val = vmcs_read(GUEST_DEBUGCTL);
+		report(!val, "VMREAD DEBUGCTL = 0x%lx, VMWRITE = 0x0", val);
+
+		vmcs_set_bits(EXI_CONTROLS, EXI_SAVE_DBGCTLS);
+	}
+
+	if ((ctrl_enter_rev.set & ENT_LOAD_DBGCTLS) ||
+	    (ctrl_exit_rev.set & EXI_SAVE_DBGCTLS))
+		return;
+
+	vmcs_clear_bits(ENT_CONTROLS, ENT_LOAD_DBGCTLS);
+	vmcs_clear_bits(EXI_CONTROLS, EXI_SAVE_DBGCTLS);
+
+	rand = rdtsc();
+	val = run_vmx_debugctl_guest(host_val, rand, guest_val);
+	report(val == host_val, "Host DEBUGCTL = 0x%lx, guest RDMSR = 0x%lx", host_val, val);
+
+	val = vmcs_read(GUEST_DEBUGCTL);
+	report(val == rand, "VMWRITE DEBUGCTL = 0x%lx, VMREAD = 0x%lx", rand, val);
+}
+
+static void vmx_debugctl_test(void)
+{
+	u64 supported_bits = 0;
+	u64 i, j;
+
+	if (this_cpu_has(X86_FEATURE_BUS_LOCK_DETECT))
+		supported_bits |= DEBUGCTLMSR_BUS_LOCK_DETECT;
+
+	if (this_cpu_has(X86_FEATURE_RTM))
+		supported_bits |= DEBUGCTLMSR_RTM_DEBUG;
+
+	if (this_cpu_has(X86_FEATURE_PDCM) && pmu_lbr_version())
+		supported_bits |= DEBUGCTLMSR_LBR;
+
+	if (!supported_bits) {
+		report_skip("%s : No DEBUGCTL features supported", __func__);
+		return;
+	}
+
+	test_set_guest(vmx_debugctl_test_guest);
+	msr_bmp_init();
+
+	for (i = 1; i <= supported_bits; i++) {
+		if ((i & supported_bits) != i)
+			continue;
+
+		for (j = 1; j <= supported_bits; j++) {
+			if ((j & supported_bits) != j)
+				continue;
+
+			__vmx_debugctl_test(i, j);
+		}
+	}
+	test_set_guest_finished();
+}
+
 #define TEST(name) { #name, .v2 = name }
 
 /* name/init/guest_main/exit_handler/vmfail_handler */
@@ -11890,5 +12039,6 @@ struct vmx_test vmx_tests[] = {
 	TEST(vmx_canonical_test),
 	/* "Load CET" VM-entry/exit controls tests. */
 	TEST(vmx_cet_test),
+	TEST(vmx_debugctl_test),
 	{ NULL, NULL, NULL, NULL },
 };
