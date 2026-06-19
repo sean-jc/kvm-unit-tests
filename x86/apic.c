@@ -920,6 +920,65 @@ static void test_aliased_xapic_physical_ipi(void)
 	report(!f, "IPI to aliased xAPIC physical IDs");
 }
 
+static atomic_t pv_ipi_received[256];
+
+static void handle_pv_ipi(isr_regs_t *regs)
+{
+	atomic_inc(&pv_ipi_received[smp_id()]);
+	apic_write(APIC_EOI, 0);
+}
+
+/*
+ * Verify that PV IPIs are correctly delivered to a vCPU with APIC ID 255.
+ */
+static void test_pv_ipi_sparse(void)
+{
+	const u8 vector = 0xf2;
+	int ret;
+
+	if (!this_cpu_has_kvm() || !this_cpu_has(KVM_FEATURE_PV_SEND_IPI)) {
+		report_skip("PV IPIs are not supported");
+		return;
+	}
+
+	if (!test_device_enabled()) {
+		report_skip("Test device not enabled");
+		return;
+	}
+
+	if (cpu_count() != 2) {
+		report_skip("Requires 2 CPUs");
+		return;
+	}
+
+	/* 255 is a broadcast ID in xAPIC, so we must use x2APIC */
+	if (!is_x2apic_enabled()) {
+		report_skip("x2APIC is not enabled");
+		return;
+	}
+
+	if (id_map[1] != 255) {
+		report_skip("vCPU 1 does not have APIC ID 255");
+		return;
+	}
+
+	handle_irq(vector, handle_pv_ipi);
+
+	/* Send PV IPI to 255 (vCPU 1) */
+	ret = send_pv_ipi(1, 0, 255, APIC_DM_FIXED | vector);
+
+	/* Wait for IPI to be received on vCPU 1 */
+	u64 start = rdtsc();
+	while (rdtsc() - start < 1000000000 &&
+	       !atomic_read(&pv_ipi_received[255])) {
+		pause();
+	}
+
+	report(ret == 1 && atomic_read(&pv_ipi_received[255]) == 1 &&
+	       atomic_read(&pv_ipi_received[0]) == 0,
+	       "PV IPI to sparse APIC ID 255");
+}
+
 struct apic_test {
 	const char *name;
 	void (*fn)(void);
@@ -942,6 +1001,7 @@ int main(int argc, char **argv)
 		{ "physical_broadcast", test_physical_broadcast },
 		{ "logical_ipi_xapic", test_logical_ipi_xapic },
 		{ "pv_ipi", test_pv_ipi },
+		{ "pv_ipi_sparse", test_pv_ipi_sparse },
 		{ "sti_nmi", test_sti_nmi },
 		{ "multiple_nmi", test_multiple_nmi },
 		{ "pending_nmi", test_pending_nmi },
