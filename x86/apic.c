@@ -638,6 +638,23 @@ static void test_apic_change_mode(void)
 
 #define KVM_HC_SEND_IPI 10
 
+static int send_pv_ipi(unsigned long a0, unsigned long a1, unsigned long a2,
+		       unsigned long a3)
+{
+	int ret;
+
+	if (is_intel())
+		asm volatile("vmcall"
+			     : "=a"(ret)
+			     : "a"(KVM_HC_SEND_IPI), "b"(a0), "c"(a1), "d"(a2), "S"(a3));
+	else
+		asm volatile("vmmcall"
+			     : "=a"(ret)
+			     : "a"(KVM_HC_SEND_IPI), "b"(a0), "c"(a1), "d"(a2), "S"(a3));
+
+	return ret;
+}
+
 static void test_pv_ipi(void)
 {
 	int ret;
@@ -651,10 +668,7 @@ static void test_pv_ipi(void)
 	if (!test_device_enabled())
 		return;
 
-	if (is_intel())
-		asm volatile("vmcall"  : "=a"(ret) :"a"(KVM_HC_SEND_IPI), "b"(a0), "c"(a1), "d"(a2), "S"(a3));
-	else
-		asm volatile("vmmcall" : "=a"(ret) :"a"(KVM_HC_SEND_IPI), "b"(a0), "c"(a1), "d"(a2), "S"(a3));
+	ret = send_pv_ipi(a0, a1, a2, a3);
 	report(!ret, "PV IPIs testing");
 }
 
