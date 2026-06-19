@@ -1,4 +1,5 @@
 #include "libcflat.h"
+#include "argv.h"
 #include "apic.h"
 #include "vm.h"
 #include "smp.h"
@@ -905,43 +906,42 @@ static void test_aliased_xapic_physical_ipi(void)
 	report(!f, "IPI to aliased xAPIC physical IDs");
 }
 
-typedef void (*apic_test_fn)(void);
+struct apic_test {
+	const char *name;
+	void (*fn)(void);
+};
 
-int main(void)
+
+
+int main(int argc, char **argv)
 {
 	bool is_x2apic = is_x2apic_enabled();
 	u32 spiv = apic_read(APIC_SPIV);
 	int i;
 
-	const apic_test_fn tests[] = {
-		test_lapic_existence,
-
-		test_apic_disable,
-		test_enable_x2apic,
-
-		test_self_ipi_xapic,
-		test_self_ipi_x2apic,
-		test_physical_broadcast,
-		test_logical_ipi_xapic,
-
-		test_pv_ipi,
-
-		test_sti_nmi,
-		test_multiple_nmi,
-		test_pending_nmi,
-
-		test_apic_timer_one_shot,
-		test_apic_change_mode,
-		test_tsc_deadline_timer,
-
+	const struct apic_test tests[] = {
+		{ "lapic_existence", test_lapic_existence },
+		{ "apic_disable", test_apic_disable },
+		{ "enable_x2apic", test_enable_x2apic },
+		{ "self_ipi_xapic", test_self_ipi_xapic },
+		{ "self_ipi_x2apic", test_self_ipi_x2apic },
+		{ "physical_broadcast", test_physical_broadcast },
+		{ "logical_ipi_xapic", test_logical_ipi_xapic },
+		{ "pv_ipi", test_pv_ipi },
+		{ "sti_nmi", test_sti_nmi },
+		{ "multiple_nmi", test_multiple_nmi },
+		{ "pending_nmi", test_pending_nmi },
+		{ "apic_timer_one_shot", test_apic_timer_one_shot },
+		{ "apic_change_mode", test_apic_change_mode },
+		{ "tsc_deadline_timer", test_tsc_deadline_timer },
 		/*
 		 * KVM may disable APICv if the APIC ID and/or APIC_BASE is
 		 * modified, keep these tests at the end so that the test as a
 		 * whole provides coverage for APICv (when it's enabled).
 		 */
-		test_apic_id,
-		test_apicbase,
-		test_aliased_xapic_physical_ipi,
+		{ "apic_id", test_apic_id },
+		{ "apicbase", test_apicbase },
+		{ "aliased_xapic_physical_ipi", test_aliased_xapic_physical_ipi },
 	};
 
 	assert_msg(is_apic_hw_enabled() && is_apic_sw_enabled(),
@@ -953,7 +953,10 @@ int main(void)
 	sti();
 
 	for (i = 0; i < ARRAY_SIZE(tests); i++) {
-		tests[i]();
+		if (!argv_test_wanted(tests[i].name, argv + 1, argc - 1))
+			continue;
+
+		tests[i].fn();
 
 		if (is_x2apic)
 			enable_x2apic();
