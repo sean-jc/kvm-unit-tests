@@ -642,6 +642,11 @@ static void test_pv_ipi(void)
 	int ret;
 	unsigned long a0 = 0xFFFFFFFF, a1 = 0, a2 = 0xFFFFFFFF, a3 = 0x0;
 
+	if (!this_cpu_has_kvm() || !this_cpu_has(KVM_FEATURE_PV_SEND_IPI)) {
+		report_skip("PV IPIs are not supported");
+		return;
+	}
+
 	if (!test_device_enabled())
 		return;
 
